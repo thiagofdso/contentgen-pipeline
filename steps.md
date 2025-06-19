@@ -117,6 +117,3 @@ Este documento descreve as etapas para o desenvolvimento do projeto **ContentGen
 **Etapa 6.1: Escrever a Documentação**
 -   [ ] Atualizar o `README.md` com instruções detalhadas de instalação, configuração (como preencher o `.env`) e uso da CLI.
 -   [ ] Adicionar docstrings a todas as classes e funções públicas.
-
-**Etapa 6.2: Empacotamento (Opcional)**
--   [ ] Configurar o `pyproject.toml` para que o projeto possa ser empacotado e instalado via `pip` usando `poetry build`.

@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches
+.cache/
+
+# Environments
+.env
+.env.*
+.venv/
+venv/
+
+# Poetry
+poetry.lock
+
+# Output folders
+output/
+dist/
+build/
+
+# VSCode
+.vscode/
+
+# IDEs
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Outros
+*.log
+
+# Diretórios temporários do projeto
+bulk_transcribe_youtube_videos_from_playlist/ 
