@@ -1,0 +1,82 @@
+# Regras do Projeto: ContentGen Pipeline
+
+# Este arquivo define as diretrizes e convenções para o desenvolvimento do projeto ContentGen Pipeline.
+# A IA deve seguir estas regras ao gerar, refatorar ou analisar código.
+
+# 1. Filosofia e Arquitetura Principal
+
+- **Padrão Arquitetônico:** O projeto segue um padrão de **Pipeline de Dados** com o **padrão de design Strategy** para a geração de conteúdo. O fluxo é: Mídia -> Áudio -> Transcrição -> Conteúdo Estruturado. A geração de conteúdo é desacoplada, permitindo a troca de provedores de IA (Adapta, OpenAI, etc.).
+- **Responsabilidade Única (SRP):** Cada classe e módulo deve ter uma única e bem definida responsabilidade. Por exemplo, a classe `Transcriber` só transcreve; `MediaProcessor` só manipula arquivos de mídia; `AdaptaGenerator` só se comunica com a API Adapta.one.
+- **Inversão de Dependência:** O pipeline (`Orchestrator`) deve depender de abstrações (a interface `BaseContentGenerator`), não de implementações concretas (`AdaptaGenerator`). A instância concreta deve ser injetada.
+- **Modularidade:** Mantenha uma clara separação entre os módulos: `core` (lógica de negócio), `generators` (provedores de IA), `pipeline` (orquestração), `utils` (helpers) e `prompts` (textos para a IA).
+
+# 2. Convenções de Codificação e Estilo
+
+- **Linguagem:** Python 3.10 ou superior.
+- **Estilo de Código:** Siga rigorosamente o **PEP 8**. Use a ferramenta `black` para formatação automática. A IA deve gerar código já formatado por `black`.
+- **Tipagem Estática:** Todo o código novo, incluindo funções, métodos e variáveis, **DEVE** usar type hints (dicas de tipo) do Python. Use tipos do módulo `typing` (ex: `List`, `Dict`, `Optional`, `Tuple`).
+- **Docstrings:** Todas as funções e classes públicas devem ter docstrings no formato Google Style ou reStructuredText. A IA deve gerar docstrings claras e concisas.
+  - Exemplo:
+    ```python
+    def extract_audio(video_path: Path) -> Path:
+        """Extrai o áudio de um arquivo de vídeo.
+
+        Args:
+            video_path: O caminho para o arquivo de vídeo.
+
+        Returns:
+            O caminho para o arquivo de áudio extraído.
+        """
+        ...
+    ```
+- **Nomenclatura:**
+    - Classes: `PascalCase` (ex: `MediaProcessor`).
+    - Funções e variáveis: `snake_case` (ex: `extract_audio`).
+    - Constantes: `UPPER_SNAKE_CASE` (ex: `WHISPER_MODEL`).
+
+# 3. Gerenciamento de Configuração e Segredos
+
+- **NÃO FAÇA HARDCODE:** Nunca coloque chaves de API, cookies, tokens ou caminhos de arquivo fixos diretamente no código.
+- **Use `config.py` e `.env`:** Todos os valores configuráveis devem ser carregados a partir de um arquivo `.env` através do módulo `config.py`, que usa Pydantic para validação. A IA deve sempre referenciar as configurações via `from .config import settings`.
+- **Exemplo de acesso à configuração:**
+  ```python
+  from .config import settings
+
+  model_name = settings.whisper_model
+  cookies = settings.adapta_cookies_str
+  ```
+
+# 4. Tratamento de Erros e Logging
+
+- **Logging em Vez de `print()`:** Substitua todas as chamadas `print()` para depuração ou informação por chamadas ao logger centralizado (`from .utils.logger import logger`).
+  - Use níveis de log apropriados: `logger.info()` para progresso, `logger.warning()` para problemas não críticos, `logger.error()` para falhas, e `logger.debug()` para informações detalhadas de depuração.
+- **Tratamento de Erros Explícito:** Use blocos `try...except` para lidar com operações que podem falhar (I/O de arquivos, chamadas de rede). Capture exceções específicas em vez de um `except Exception:` genérico.
+- **Retentativas (Retries):** Para chamadas de API, use um decorador de retentativa (localizado em `utils/error_handler.py`) para lidar com falhas transitórias.
+
+# 5. Código Assíncrono
+
+- **Use `asyncio` para I/O:** Todas as operações de I/O de rede (chamadas de API) devem ser assíncronas. Use a biblioteca `httpx` em vez de `requests` para isso.
+- **ThreadPoolExecutor para Tarefas de CPU:** Tarefas pesadas de CPU (como a transcrição do Whisper) que não são nativamente assíncronas devem ser executadas em um `ThreadPoolExecutor` para não bloquear o event loop do `asyncio`.
+  ```python
+  loop = asyncio.get_event_loop()
+  await loop.run_in_executor(None, self.transcriber.transcribe, audio_path)
+  ```
+
+# 6. Estrutura do Projeto (Blueprint)
+
+- A IA deve respeitar a estrutura de diretórios definida no `spec.md`.
+- **`core/`**: Contém a lógica de negócio principal (`MediaProcessor`, `Transcriber`).
+- **`generators/`**: Contém a interface `base.py` e as implementações de cada provedor de IA (`adapta_generator.py`, etc.).
+- **`pipeline/`**: Contém o `orchestrator.py` que une tudo.
+- **`utils/`**: Contém helpers para logging, manipulação de arquivos e tratamento de erros.
+- **`prompts/`**: Todos os prompts de IA devem ser armazenados como arquivos `.txt` nesta pasta e carregados dinamicamente, nunca hardcoded no código Python.
+
+# 7. Interação com a IA (Prompting)
+
+- **Clareza e Contexto:** Ao pedir código, forneça contexto claro sobre qual módulo o código deve pertencer e quais convenções ele deve seguir.
+- **Exemplo de Comando para a IA:**
+  - "No arquivo `src/contentgen_pipeline/generators/adapta_generator.py`, implemente o método `async diagram(text: str)` que herda da `BaseContentGenerator`. Ele deve carregar o prompt de `prompts/diagram.txt`, fazer uma chamada de API para a Adapta.one e retornar o texto formatado. Lembre-se de usar o logger e o tratamento de erros."
+
+# 8. Testes (Diretriz Futura)
+
+- Embora os testes não sejam o foco inicial, a arquitetura deve facilitar a testabilidade. A IA deve gerar código que seja fácil de testar, evitando efeitos colaterais globais e favorecendo a injeção de dependências.
