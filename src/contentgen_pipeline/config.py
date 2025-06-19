@@ -1,0 +1,29 @@
+"""Módulo de configuração para o ContentGen Pipeline."""
+
+import os
+from pathlib import Path
+from typing import Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    """Configurações da aplicação carregadas do arquivo .env."""
+
+    # Configurações do Adapta.one
+    adapta_cookies_str: str = Field(..., description="Cookies de autenticação do Adapta.one")
+
+    # Configurações do Whisper
+    whisper_model: str = Field(default="medium", description="Modelo do Whisper a ser usado")
+
+    # Configurações do CUDA/cuDNN
+    cudnn_path: Optional[str] = Field(default=None, description="Caminho para o cuDNN (ex: C:\\Program Files\\NVIDIA\\CUDNN\\v9.10\\)")
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+
+
+# Instância global das configurações
+settings = Settings() 

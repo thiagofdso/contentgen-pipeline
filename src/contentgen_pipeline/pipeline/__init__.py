@@ -1,0 +1,1 @@
+"""Módulo pipeline - Orquestração do fluxo de trabalho.""" 

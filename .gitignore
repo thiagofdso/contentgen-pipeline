@@ -35,4 +35,20 @@ Thumbs.db
 *.log
 
 # Diretórios temporários do projeto
-bulk_transcribe_youtube_videos_from_playlist/ 
+bulk_transcribe_youtube_videos_from_playlist/
+
+# Arquivos de teste de mídia
+videoteste.webm
+*.mp3
+*.mp4
+*.avi
+*.mkv
+*.webm
+
+# Adicionar a pasta /videos ao gitignore
+/videos/
+
+steps.md
+spec.md
+
+@/adapta/ 
