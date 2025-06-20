@@ -6,7 +6,7 @@ do pipeline de geração de conteúdo.
 
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast, Dict
 
 import typer
 from rich.console import Console
@@ -15,6 +15,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .pipeline.orchestrator import PipelineOrchestrator
 from .generators.adapta import GeminiGenerator, ClaudeGenerator, GPTGenerator
+from .generators.base import BaseContentGenerator
 from .config import settings
 from .utils.logger import logger, setup_logger
 
@@ -61,14 +62,34 @@ def get_content_generator(generator_type: str):
 
 @app.command()
 def process(
-    path: Path = typer.Argument(
-        ...,
-        help="Caminho para arquivo de mídia ou diretório contendo arquivos de mídia"
+    path: Optional[Path] = typer.Argument(
+        None,
+        help="Caminho para arquivo de mídia ou diretório contendo arquivos de mídia (padrão: VIDEO_FOLDER do .env)"
     ),
     generator: str = typer.Option(
         "gemini",
         "--generator", "-g",
-        help="Tipo de gerador de conteúdo (gemini, claude, gpt)"
+        help="Tipo de gerador de conteúdo padrão (gemini, claude, gpt)"
+    ),
+    summarize_generator: str = typer.Option(
+        None,
+        "--summarize-generator",
+        help="Gerador específico para resumo (gemini, claude, gpt)"
+    ),
+    diagram_generator: str = typer.Option(
+        None,
+        "--diagram-generator",
+        help="Gerador específico para diagramação (gemini, claude, gpt)"
+    ),
+    mindmap_preprocess_generator: str = typer.Option(
+        None,
+        "--mindmap-preprocess-generator",
+        help="Gerador específico para pré-processamento do mapa mental (gemini, claude, gpt)"
+    ),
+    mindmap_generator: str = typer.Option(
+        None,
+        "--mindmap-generator",
+        help="Gerador específico para geração do mapa mental (gemini, claude, gpt)"
     ),
     output_dir: Optional[Path] = typer.Option(
         None,
@@ -115,6 +136,16 @@ def process(
         if verbose:
             logger.info("Modo verboso ativado")
         
+        # Determinar o caminho a ser usado
+        if path is None:
+            if settings.video_folder:
+                path = Path(settings.video_folder)
+                console.print(f"[blue]Usando diretório padrão do .env: {path}[/blue]")
+            else:
+                console.print("[red]Erro: Nenhum caminho especificado e VIDEO_FOLDER não configurado no .env[/red]")
+                console.print("[yellow]Use: contentgen process <caminho> ou configure VIDEO_FOLDER no .env[/yellow]")
+                raise typer.Exit(1)
+        
         # Validar caminho de entrada
         if not path.exists():
             console.print(f"[red]Erro: Caminho não encontrado: {path}[/red]")
@@ -128,8 +159,25 @@ def process(
             console.print(f"[red]Erro: {e}[/red]")
             raise typer.Exit(1)
         
+        # Criar geradores específicos para cada etapa
+        generators = {
+            "default": content_generator,
+            "summarize": get_content_generator(summarize_generator or settings.summarize_generator or "gemini"),
+            "diagram": get_content_generator(diagram_generator or settings.diagram_generator or "gemini"),
+            "mindmap_preprocess": get_content_generator(mindmap_preprocess_generator or settings.mindmap_preprocess_generator or "gemini"),
+            "mindmap": get_content_generator(mindmap_generator or settings.mindmap_generator or "gemini")
+        }
+        
+        # Log dos geradores configurados
+        if verbose:
+            console.print(f"[blue]Geradores configurados:[/blue]")
+            console.print(f"  Resumo: {generators['summarize'].get_provider_name()}")
+            console.print(f"  Diagramação: {generators['diagram'].get_provider_name()}")
+            console.print(f"  Pré-processamento MM: {generators['mindmap_preprocess'].get_provider_name()}")
+            console.print(f"  Geração MM: {generators['mindmap'].get_provider_name()}")
+        
         # Criar orquestrador
-        orchestrator = PipelineOrchestrator(content_generator)
+        orchestrator = PipelineOrchestrator(cast(Dict[str, BaseContentGenerator], generators))
         
         # Verificar saúde dos componentes
         with Progress(
@@ -308,6 +356,151 @@ def version():
     """Exibe a versão do ContentGen Pipeline."""
     # TODO: Implementar versão dinâmica
     console.print("[blue]ContentGen Pipeline v1.0.0[/blue]")
+
+
+@app.command()
+def watch(
+    path: Optional[Path] = typer.Argument(
+        None,
+        help="Diretório a ser monitorado para novos arquivos de mídia (padrão: VIDEO_FOLDER do .env)"
+    ),
+    generator: str = typer.Option(
+        "gemini",
+        "--generator", "-g",
+        help="Tipo de gerador de conteúdo padrão (gemini, claude, gpt)"
+    ),
+    summarize_generator: str = typer.Option(
+        None,
+        "--summarize-generator",
+        help="Gerador específico para resumo (gemini, claude, gpt)"
+    ),
+    diagram_generator: str = typer.Option(
+        None,
+        "--diagram-generator",
+        help="Gerador específico para diagramação (gemini, claude, gpt)"
+    ),
+    mindmap_preprocess_generator: str = typer.Option(
+        None,
+        "--mindmap-preprocess-generator",
+        help="Gerador específico para pré-processamento do mapa mental (gemini, claude, gpt)"
+    ),
+    mindmap_generator: str = typer.Option(
+        None,
+        "--mindmap-generator",
+        help="Gerador específico para geração do mapa mental (gemini, claude, gpt)"
+    ),
+    max_cycles: Optional[int] = typer.Option(
+        None,
+        "--max-cycles",
+        help="Número máximo de ciclos de varredura (default: ilimitado)"
+    ),
+    no_limit: bool = typer.Option(
+        False,
+        "--no-limit",
+        help="Executar ciclos ilimitados (ignora --max-cycles)"
+    ),
+    delay: float = typer.Option(
+        10.0,
+        "--delay",
+        help="Delay (em segundos) entre cada varredura (default: 10)"
+    ),
+    extract_audio: bool = typer.Option(
+        True,
+        "--extract-audio/--no-extract-audio",
+        help="Extrair áudio do vídeo (default: True)"
+    ),
+    transcribe: bool = typer.Option(
+        True,
+        "--transcribe/--no-transcribe",
+        help="Transcrever áudio (default: True)"
+    ),
+    diagram: bool = typer.Option(
+        True,
+        "--diagram/--no-diagram",
+        help="Gerar diagramação do texto (default: True)"
+    ),
+    summarize: bool = typer.Option(
+        True,
+        "--summarize/--no-summarize",
+        help="Gerar resumo do texto (default: True)"
+    ),
+    mindmap: bool = typer.Option(
+        False,
+        "--mindmap/--no-mindmap",
+        help="Gerar mapa mental (default: False)"
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Modo verboso com logs detalhados"
+    )
+):
+    """
+    Monitora continuamente um diretório e processa novos arquivos de mídia automaticamente.
+    """
+    try:
+        if verbose:
+            logger.info("Modo verboso ativado")
+
+        # Determinar o caminho a ser usado
+        if path is None:
+            if settings.video_folder:
+                path = Path(settings.video_folder)
+                console.print(f"[blue]Usando diretório padrão do .env: {path}[/blue]")
+            else:
+                console.print("[red]Erro: Nenhum caminho especificado e VIDEO_FOLDER não configurado no .env[/red]")
+                console.print("[yellow]Use: contentgen watch <caminho> ou configure VIDEO_FOLDER no .env[/yellow]")
+                raise typer.Exit(1)
+
+        if not path.exists() or not path.is_dir():
+            console.print(f"[red]Erro: Diretório não encontrado: {path}[/red]")
+            raise typer.Exit(1)
+
+        try:
+            content_generator = get_content_generator(generator)
+            console.print(f"[green]Gerador de conteúdo inicializado: {generator}[/green]")
+        except ValueError as e:
+            console.print(f"[red]Erro: {e}[/red]")
+            raise typer.Exit(1)
+
+        # Criar geradores específicos para cada etapa
+        generators = {
+            "default": content_generator,
+            "summarize": get_content_generator(summarize_generator or settings.summarize_generator or "gemini"),
+            "diagram": get_content_generator(diagram_generator or settings.diagram_generator or "gemini"),
+            "mindmap_preprocess": get_content_generator(mindmap_preprocess_generator or settings.mindmap_preprocess_generator or "gemini"),
+            "mindmap": get_content_generator(mindmap_generator or settings.mindmap_generator or "gemini")
+        }
+
+        # Log dos geradores configurados
+        if verbose:
+            console.print(f"[blue]Geradores configurados:[/blue]")
+            console.print(f"  Resumo: {generators['summarize'].get_provider_name()}")
+            console.print(f"  Diagramação: {generators['diagram'].get_provider_name()}")
+            console.print(f"  Pré-processamento MM: {generators['mindmap_preprocess'].get_provider_name()}")
+            console.print(f"  Geração MM: {generators['mindmap'].get_provider_name()}")
+
+        orchestrator = PipelineOrchestrator(cast(Dict[str, BaseContentGenerator], generators))
+
+        # Determina o número de ciclos
+        cycles = None if no_limit else max_cycles
+
+        console.print(f"[blue]Monitorando diretório: {path}[/blue]")
+        asyncio.run(orchestrator.watch_directory(
+            directory_path=path,
+            extract_audio=extract_audio,
+            transcribe=transcribe,
+            diagram=diagram,
+            summarize=summarize,
+            mindmap=mindmap,
+            delay=delay,
+            max_cycles=cycles
+        ))
+
+    except Exception as e:
+        logger.error(f"Erro durante o monitoramento: {str(e)}")
+        console.print(f"[red]Erro: {str(e)}[/red]")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

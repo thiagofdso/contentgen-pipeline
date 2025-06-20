@@ -12,27 +12,13 @@ from pathlib import Path
 import httpx
 
 from ...config import settings
+from ...utils.logger import logger
 
 
 # Formatos de arquivo aceitos para upload
 FORMATOS_ACEITOS = {
     '.txt', '.docx', '.pdf', '.xlsx', '.xls', '.csv', '.png', '.jpg'
 }
-
-
-def log_debug(message: str) -> None:
-    """Função simples de logging para debug."""
-    print(f"DEBUG: {message}")
-
-
-def log_error(message: str) -> None:
-    """Função simples de logging para erro."""
-    print(f"ERROR: {message}")
-
-
-def log_warning(message: str) -> None:
-    """Função simples de logging para warning."""
-    print(f"WARNING: {message}")
 
 
 class AdaptaClient:
@@ -116,7 +102,7 @@ class AdaptaClient:
         try:
             return dict(pair.split("=", 1) for pair in cookies_str.split("; "))
         except ValueError as e:
-            log_error(f"Erro ao parsear cookies: {e}")
+            logger.error(f"Erro ao parsear cookies: {e}")
             raise ValueError(f"String de cookies inválida: {cookies_str}")
     
     async def __aenter__(self):
@@ -153,71 +139,73 @@ class AdaptaClient:
     async def _update_credentials(self) -> None:
         """Atualiza as credenciais do cliente, incluindo o session_id."""
         if not self.client:
-            raise RuntimeError("Cliente HTTP não inicializado")
+            logger.error("Cliente HTTP não inicializado")
+            raise ValueError("Cookies não estão disponíveis")
         
         try:
             # Verificar se temos cookies válidos
             if not self.cookies:
-                log_error("Nenhum cookie disponível para atualizar credenciais")
+                logger.error("Nenhum cookie disponível para atualizar credenciais")
                 raise ValueError("Cookies não estão disponíveis")
             
-            log_debug(f"Cookies disponíveis: {list(self.cookies.keys())}")
+            logger.debug(f"Cookies disponíveis: {list(self.cookies.keys())}")
             
             # Busca informações do cliente
             client_url = f"{self.clerk_base_url}/client?__clerk_api_version=2024-10-01&_clerk_js_version=5.55.1"
-            log_debug(f"Fazendo requisição para: {client_url}")
+            logger.debug(f"Fazendo requisição para: {client_url}")
             
             response = await self.client.get(
                 client_url,
                 headers=self.headers,
                 cookies=self.cookies
             )
-            log_debug(f"Resposta da API: Status {response.status_code}")
+            logger.debug(f"Resposta da API: Status {response.status_code}")
             
             response.raise_for_status()
             
             client_data = response.json()
-            log_debug(f"Estrutura da resposta: {list(client_data.keys()) if isinstance(client_data, dict) else 'Não é dict'}")
+            logger.debug(f"Estrutura da resposta: {list(client_data.keys()) if isinstance(client_data, dict) else 'Não é dict'}")
             
             if "response" not in client_data:
-                log_error(f"Campo 'response' não encontrado na resposta: {client_data}")
+                logger.error(f"Campo 'response' não encontrado na resposta: {client_data}")
                 raise KeyError("Campo 'response' não encontrado na resposta da API")
             
             response_data = client_data["response"]
-            log_debug(f"Estrutura do response: {list(response_data.keys()) if isinstance(response_data, dict) else 'Não é dict'}")
+            logger.debug(f"Estrutura do response: {list(response_data.keys()) if isinstance(response_data, dict) else 'Não é dict'}")
             
             if "last_active_session_id" not in response_data:
-                log_error(f"Campo 'last_active_session_id' não encontrado: {response_data}")
+                logger.error(f"Campo 'last_active_session_id' não encontrado: {response_data}")
                 raise KeyError("Campo 'last_active_session_id' não encontrado na resposta")
             
             self.session_id = response_data["last_active_session_id"]
             
             if not self.session_id:
-                log_error("Session ID obtido está vazio")
+                logger.error("Session ID obtido está vazio")
                 raise ValueError("Session ID está vazio")
             
-            log_debug(f"Credenciais atualizadas. Session ID: {self.session_id}")
+            logger.debug(f"Credenciais atualizadas. Session ID: {self.session_id}")
             
         except httpx.HTTPError as e:
-            log_error(f"Erro HTTP ao atualizar credenciais: {e}")
+            logger.error(f"Erro HTTP ao atualizar credenciais: {e}")
             if isinstance(e, httpx.HTTPStatusError) and e.response:
-                log_error(f"Status code: {e.response.status_code}")
-                log_error(f"Resposta: {e.response.text[:500]}")
+                logger.error(f"Status code: {e.response.status_code}")
+                logger.error(f"Resposta: {e.response.text[:500]}")
             raise
         except KeyError as e:
-            log_error(f"Erro ao extrair session_id da resposta: {e}")
+            logger.error(f"Erro ao extrair session_id da resposta: {e}")
             raise
         except ValueError as e:
-            log_error(f"Erro de validação: {e}")
+            logger.error(f"Erro de validação: {e}")
             raise
         except Exception as e:
-            log_error(f"Erro inesperado ao atualizar credenciais: {e}")
-            log_error(f"Tipo do erro: {type(e).__name__}")
+            logger.error(f"Erro inesperado ao atualizar credenciais: {e}")
+            logger.error(f"Tipo do erro: {type(e).__name__}")
             raise
     
     async def _update_session(self) -> None:
         """Atualiza o cookie __session com o token JWT atualizado."""
         if not self.client or not self.session_id:
+            logger.error("Cliente ou session_id não inicializado")
             raise RuntimeError("Cliente ou session_id não inicializado")
         
         try:
@@ -244,16 +232,16 @@ class AdaptaClient:
             self.cookies["__session"] = session_jwt
             self.cookies["__session_xcsZUTdN"] = session_jwt
             
-            log_debug(f"Sessão atualizada com sucesso. Token: {session_jwt[:20]}...")
+            logger.debug(f"Sessão atualizada com sucesso. Token: {session_jwt[:20]}...")
             
         except httpx.HTTPError as e:
-            log_error(f"Erro ao atualizar sessão: {e}")
+            logger.error(f"Erro ao atualizar sessão: {e}")
             raise
         except KeyError as e:
-            log_error(f"Erro ao extrair token da resposta: {e}")
+            logger.error(f"Erro ao extrair token da resposta: {e}")
             raise
         except ValueError as e:
-            log_error(f"Token inválido: {e}")
+            logger.error(f"Token inválido: {e}")
             raise
     
     def _generate_random_id(self) -> str:
@@ -291,10 +279,12 @@ class AdaptaClient:
         await self._update_session()
         
         if not self.client:
+            logger.error("Cliente HTTP não inicializado")
             raise RuntimeError("Cliente HTTP não inicializado")
         
         # Validar se o token está presente
         if '__session' not in self.cookies or not self.cookies['__session']:
+            logger.error("Token de sessão não está disponível")
             raise ValueError("Token de sessão não está disponível")
         
         request_headers = self.headers.copy()
@@ -313,7 +303,7 @@ class AdaptaClient:
             return response
             
         except httpx.HTTPError as e:
-            log_error(f"Erro na requisição {method} {url}: {e}")
+            logger.error(f"Erro na requisição {method} {url}: {e}")
             raise
     
     @staticmethod
@@ -352,14 +342,14 @@ class AdaptaClient:
         try:
             file_path = Path(caminho_arquivo)
             if not file_path.exists():
-                log_error(f"Arquivo não encontrado: {caminho_arquivo}")
+                logger.error(f"Arquivo não encontrado: {caminho_arquivo}")
                 return None
             
             # Validação de formatos aceitos
             extensao = file_path.suffix.lower()
             
             if not self.is_formato_aceito(extensao):
-                log_error(f"Formato de arquivo não suportado: {extensao}. Formatos aceitos: {', '.join(self.get_formatos_aceitos())}")
+                logger.error(f"Formato de arquivo não suportado: {extensao}. Formatos aceitos: {', '.join(self.get_formatos_aceitos())}")
                 raise ValueError(f"Formato de arquivo não suportado: {extensao}. Formatos aceitos: {', '.join(self.get_formatos_aceitos())}")
             
             url = 'https://adapta-one-services-production.up.railway.app/v1/files'
@@ -385,17 +375,17 @@ class AdaptaClient:
                 )
                 
                 data = response.json()
-                log_debug(f"Arquivo carregado com sucesso: {data}")
+                logger.debug(f"Arquivo carregado com sucesso: {data}")
                 return data
                 
         except FileNotFoundError:
-            log_error(f"Arquivo não encontrado: {caminho_arquivo}")
+            logger.error(f"Arquivo não encontrado: {caminho_arquivo}")
             return None
         except ValueError as e:
             # Re-raise ValueError para formatos não suportados
             raise
         except Exception as e:
-            log_error(f"Erro ao carregar arquivo: {e}")
+            logger.error(f"Erro ao carregar arquivo: {e}")
             return None
     
     async def excluir_arquivo(self, id_arquivo: str) -> Optional[str]:
@@ -421,11 +411,11 @@ class AdaptaClient:
             data = response.json()
             
             status = data.get("status")
-            log_debug(f"Arquivo excluído com sucesso. Status: {status}")
+            logger.debug(f"Arquivo excluído com sucesso. Status: {status}")
             return status
             
         except Exception as e:
-            log_error(f"Erro ao excluir arquivo: {e}")
+            logger.error(f"Erro ao excluir arquivo: {e}")
             return None
     
     async def call_model(
@@ -445,33 +435,33 @@ class AdaptaClient:
             Conteúdo da resposta extraído ou None se houver erro.
         """
         try:
-            log_debug(f"Iniciando call_model para modelo: {model}")
-            log_debug(f"Número de mensagens: {len(messages)}")
+            logger.debug(f"Iniciando call_model para modelo: {model}")
+            logger.debug(f"Número de mensagens: {len(messages)}")
             
             response = await self._create_conversation_with_retry(messages, model)
             
             if response:
-                log_debug(f"Conversa criada com sucesso. Status: {response.status_code}")
-                log_debug(f"Tamanho da resposta: {len(response.text)} caracteres")
+                logger.debug(f"Conversa criada com sucesso. Status: {response.status_code}")
+                logger.debug(f"Tamanho da resposta: {len(response.text)} caracteres")
                 
                 if response.status_code == 200:
                     content = self._extract_content(response.text, new_line)
                     if content:
-                        log_debug(f"Conteúdo extraído com sucesso: {len(content)} caracteres")
+                        logger.debug(f"Conteúdo extraído com sucesso: {len(content)} caracteres")
                         return content
                     else:
-                        log_error("Conteúdo extraído está vazio")
+                        logger.error("Conteúdo extraído está vazio")
                         return None
                 else:
-                    log_error(f"Status code não é 200: {response.status_code}")
+                    logger.error(f"Status code não é 200: {response.status_code}")
                     return None
             else:
-                log_error("Resposta da conversa é None")
+                logger.error("Resposta da conversa é None")
                 return None
             
         except Exception as e:
-            log_error(f"Erro ao chamar modelo {model}: {e}")
-            log_error(f"Tipo do erro: {type(e).__name__}")
+            logger.error(f"Erro ao chamar modelo {model}: {e}")
+            logger.error(f"Tipo do erro: {type(e).__name__}")
             return None
     
     async def _create_conversation(
@@ -489,24 +479,24 @@ class AdaptaClient:
             Resposta da API ou None em caso de erro.
         """
         try:
-            log_debug(f"Iniciando criação de conversa para modelo: {model}")
+            logger.debug(f"Iniciando criação de conversa para modelo: {model}")
             
             await self._ensure_client()
-            log_debug("Cliente HTTP garantido")
+            logger.debug("Cliente HTTP garantido")
             
             await self._update_session()
-            log_debug("Sessão atualizada")
+            logger.debug("Sessão atualizada")
             
             # Verificar token após atualização
             if '__session' not in self.cookies:
-                log_error("Token __session não encontrado após atualização de sessão")
+                logger.error("Token __session não encontrado após atualização de sessão")
                 raise ValueError("Token de sessão não está disponível")
             
             token = self.cookies['__session']
-            log_debug(f"Token disponível: {token[:20]}... ({len(token)} caracteres)")
+            logger.debug(f"Token disponível: {token[:20]}... ({len(token)} caracteres)")
             
             chat_id = self._generate_random_id()
-            log_debug(f"Chat ID gerado: {chat_id}")
+            logger.debug(f"Chat ID gerado: {chat_id}")
             
             payload = {
                 "messages": messages,
@@ -526,7 +516,7 @@ class AdaptaClient:
                 "enhanceResponse": False,
             }
             
-            log_debug(f"Payload preparado: {len(messages)} mensagens, modelo: {model}")
+            logger.debug(f"Payload preparado: {len(messages)} mensagens, modelo: {model}")
             
             headers = self.headers.copy()
             headers['content-type'] = 'application/json'
@@ -534,22 +524,23 @@ class AdaptaClient:
             headers['authorization'] = f"Bearer {token}"
             headers['x-user-id'] = self.user_id
             
-            log_debug(f"Headers preparados: {list(headers.keys())}")
-            log_debug(f"Authorization header: Bearer {token[:20]}...")
+            logger.debug(f"Headers preparados: {list(headers.keys())}")
+            logger.debug(f"Authorization header: Bearer {token[:20]}...")
             
-            url = "https://api.adapta.one/api/chat/conversation"
-            log_debug(f"URL da requisição: {url}")
+            #url = "https://api.adapta.one/api/chat/conversation"
+            url = "https://api.adapta.one/api/preview/chat/conversation"
+            logger.debug(f"URL da requisição: {url}")
             
             if not self.client:
-                log_error("Cliente HTTP não inicializado")
+                logger.error("Cliente HTTP não inicializado")
                 raise RuntimeError("Cliente HTTP não inicializado")
             
             # Validar se o token está presente
             if '__session' not in self.cookies or not self.cookies['__session']:
-                log_error("Token de sessão não está disponível antes da requisição")
+                logger.error("Token de sessão não está disponível antes da requisição")
                 raise ValueError("Token de sessão não está disponível")
             
-            log_debug("Iniciando requisição HTTP...")
+            logger.debug("Iniciando requisição HTTP...")
             
             try:
                 response = await self.client.request(
@@ -559,43 +550,43 @@ class AdaptaClient:
                     cookies=self.cookies,
                     json=payload
                 )
-                log_debug(f"Resposta recebida: Status {response.status_code}")
+                logger.debug(f"Resposta recebida: Status {response.status_code}")
                 
                 response.raise_for_status()
-                log_debug("Requisição bem-sucedida")
+                logger.debug("Requisição bem-sucedida")
                 
                 # Apaga a conversa após a criação com tratamento de exceção
-                log_debug("Iniciando exclusão da conversa...")
+                logger.debug("Iniciando exclusão da conversa...")
                 try:
                     await self._delete_conversations([chat_id])
-                    log_debug("Conversa excluída com sucesso")
+                    logger.debug("Conversa excluída com sucesso")
                 except Exception as delete_error:
                     # Log do erro mas não quebra o fluxo principal
-                    log_warning(f"Erro ao excluir conversa {chat_id} (não crítico): {delete_error}")
-                    log_warning(f"Tipo do erro de exclusão: {type(delete_error).__name__}")
+                    logger.warning(f"Erro ao excluir conversa {chat_id} (não crítico): {delete_error}")
+                    logger.warning(f"Tipo do erro de exclusão: {type(delete_error).__name__}")
                     # Continua o fluxo normalmente
                 
                 return response
                 
             except httpx.TimeoutException as e:
-                log_error(f"Timeout na requisição: {e}")
-                log_error(f"Detalhes do timeout: {type(e).__name__}")
+                logger.error(f"Timeout na requisição: {e}")
+                logger.error(f"Detalhes do timeout: {type(e).__name__}")
                 raise
             except httpx.HTTPStatusError as e:
-                log_error(f"Erro HTTP na requisição: {e.response.status_code} - {e.response.text[:200]}")
+                logger.error(f"Erro HTTP na requisição: {e.response.status_code} - {e.response.text[:200]}")
                 raise
             except httpx.RequestError as e:
-                log_error(f"Erro de requisição: {e}")
-                log_error(f"Tipo do erro de requisição: {type(e).__name__}")
+                logger.error(f"Erro de requisição: {e}")
+                logger.error(f"Tipo do erro de requisição: {type(e).__name__}")
                 raise
             except Exception as e:
-                log_error(f"Erro inesperado na requisição: {e}")
-                log_error(f"Tipo do erro inesperado: {type(e).__name__}")
+                logger.error(f"Erro inesperado na requisição: {e}")
+                logger.error(f"Tipo do erro inesperado: {type(e).__name__}")
                 raise
             
         except Exception as e:
-            log_error(f"Erro ao criar conversa: {e}")
-            log_error(f"Tipo do erro: {type(e).__name__}")
+            logger.error(f"Erro ao criar conversa: {e}")
+            logger.error(f"Tipo do erro: {type(e).__name__}")
             return None
     
     async def _delete_conversations(self, chat_ids: List[str]) -> None:
@@ -605,13 +596,13 @@ class AdaptaClient:
             chat_ids: Lista de IDs das conversas a serem apagadas.
         """
         try:
-            log_debug(f"Iniciando exclusão de conversas: {chat_ids}")
+            logger.debug(f"Iniciando exclusão de conversas: {chat_ids}")
             
             await self._ensure_client()
-            log_debug("Cliente HTTP garantido para exclusão")
+            logger.debug("Cliente HTTP garantido para exclusão")
             
             await self._update_session()
-            log_debug("Sessão atualizada para exclusão")
+            logger.debug("Sessão atualizada para exclusão")
             
             headers = self.headers.copy()
             headers['content-type'] = 'application/json'
@@ -621,24 +612,24 @@ class AdaptaClient:
                 headers['x-session-id'] = self.session_id
             headers['x-user-id'] = self.user_id
             
-            log_debug(f"Headers para exclusão preparados: {list(headers.keys())}")
+            logger.debug(f"Headers para exclusão preparados: {list(headers.keys())}")
             
             payload = {"chatIds": chat_ids}
             url = "https://api.adapta.one/api/chat/delete"
             
-            log_debug(f"URL de exclusão: {url}")
-            log_debug(f"Payload de exclusão: {payload}")
+            logger.debug(f"URL de exclusão: {url}")
+            logger.debug(f"Payload de exclusão: {payload}")
             
             if not self.client:
-                log_error("Cliente HTTP não inicializado para exclusão")
+                logger.error("Cliente HTTP não inicializado para exclusão")
                 raise RuntimeError("Cliente HTTP não inicializado")
             
             # Validar se o token está presente
             if '__session' not in self.cookies or not self.cookies['__session']:
-                log_error("Token de sessão não está disponível para exclusão")
+                logger.error("Token de sessão não está disponível para exclusão")
                 raise ValueError("Token de sessão não está disponível")
             
-            log_debug("Iniciando requisição de exclusão...")
+            logger.debug("Iniciando requisição de exclusão...")
             
             try:
                 response = await self.client.request(
@@ -648,30 +639,30 @@ class AdaptaClient:
                     cookies=self.cookies,
                     json=payload
                 )
-                log_debug(f"Resposta de exclusão recebida: Status {response.status_code}")
+                logger.debug(f"Resposta de exclusão recebida: Status {response.status_code}")
                 
                 response.raise_for_status()
-                log_debug("Exclusão bem-sucedida")
+                logger.debug("Exclusão bem-sucedida")
                 
             except httpx.TimeoutException as e:
-                log_error(f"Timeout na exclusão: {e}")
-                log_error(f"Detalhes do timeout de exclusão: {type(e).__name__}")
+                logger.error(f"Timeout na exclusão: {e}")
+                logger.error(f"Detalhes do timeout de exclusão: {type(e).__name__}")
                 raise
             except httpx.HTTPStatusError as e:
-                log_error(f"Erro HTTP na exclusão: {e.response.status_code} - {e.response.text[:200]}")
+                logger.error(f"Erro HTTP na exclusão: {e.response.status_code} - {e.response.text[:200]}")
                 raise
             except httpx.RequestError as e:
-                log_error(f"Erro de requisição na exclusão: {e}")
-                log_error(f"Tipo do erro de requisição na exclusão: {type(e).__name__}")
+                logger.error(f"Erro de requisição na exclusão: {e}")
+                logger.error(f"Tipo do erro de requisição na exclusão: {type(e).__name__}")
                 raise
             except Exception as e:
-                log_error(f"Erro inesperado na exclusão: {e}")
-                log_error(f"Tipo do erro inesperado na exclusão: {type(e).__name__}")
+                logger.error(f"Erro inesperado na exclusão: {e}")
+                logger.error(f"Tipo do erro inesperado na exclusão: {type(e).__name__}")
                 raise
             
         except Exception as e:
-            log_warning(f"Erro ao apagar conversas: {e}")
-            log_warning(f"Tipo do erro: {type(e).__name__}")
+            logger.warning(f"Erro ao apagar conversas: {e}")
+            logger.warning(f"Tipo do erro: {type(e).__name__}")
     
     def _extract_content(self, response_text: str, new_line: bool = True) -> Optional[str]:
         """Extrai o conteúdo da resposta da API.
@@ -706,7 +697,7 @@ class AdaptaClient:
             await self._update_credentials()
             return True
         except Exception as e:
-            log_error(f"Health check falhou: {e}")
+            logger.error(f"Health check falhou: {e}")
             return False
     
     async def _create_conversation_with_retry(
@@ -731,25 +722,25 @@ class AdaptaClient:
         
         for attempt in range(max_retries):
             try:
-                log_debug(f"Tentativa {attempt + 1}/{max_retries} para criar conversa")
+                logger.debug(f"Tentativa {attempt + 1}/{max_retries} para criar conversa")
                 
                 response = await self._create_conversation(messages, model)
                 
                 if response:
-                    log_debug(f"Conversa criada com sucesso na tentativa {attempt + 1}")
+                    logger.debug(f"Conversa criada com sucesso na tentativa {attempt + 1}")
                     return response
                 else:
-                    log_error(f"Tentativa {attempt + 1} falhou: resposta é None")
+                    logger.error(f"Tentativa {attempt + 1} falhou: resposta é None")
                     
             except Exception as e:
                 last_error = e
-                log_error(f"Tentativa {attempt + 1} falhou: {e}")
+                logger.error(f"Tentativa {attempt + 1} falhou: {e}")
                 
                 if attempt < max_retries - 1:
-                    log_debug(f"Aguardando {delay} segundos antes da próxima tentativa...")
+                    logger.debug(f"Aguardando {delay} segundos antes da próxima tentativa...")
                     await asyncio.sleep(delay)
                     # Aumenta o delay exponencialmente
                     delay *= 1.5
         
-        log_error(f"Todas as {max_retries} tentativas falharam. Último erro: {last_error}")
+        logger.error(f"Todas as {max_retries} tentativas falharam. Último erro: {last_error}")
         return None 

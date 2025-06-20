@@ -135,7 +135,8 @@ class Transcriber:
             if 'streams' in metadata:
                 for stream in metadata['streams']:
                     if stream.get('codec_type') == 'audio' and 'duration' in stream:
-                        return float(stream['duration'])
+                        duration_seconds = float(stream['duration'])
+                        return int(round(duration_seconds * 1000))                        
             logger.warning(f"Não foi possível obter a duração do áudio: {audio_path}")
             return 0.0
         except subprocess.CalledProcessError as e:

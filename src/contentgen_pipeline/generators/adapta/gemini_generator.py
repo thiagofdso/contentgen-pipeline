@@ -4,7 +4,7 @@ Este módulo implementa o GeminiGenerator que utiliza a API Adapta.one
 para gerar conteúdo usando o modelo Gemini.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pathlib import Path
 
 from ..base import BaseContentGenerator
@@ -174,6 +174,35 @@ class GeminiGenerator(BaseContentGenerator):
             
         except Exception as e:
             raise Exception(f"Erro ao gerar conteúdo personalizado com Gemini: {e}")
+    
+    async def call_model_with_messages(self, messages: List[Dict[str, str]]) -> str:
+        """Chama o modelo Gemini diretamente com uma lista de mensagens.
+        
+        Este método permite enviar diretamente uma lista de mensagens para o modelo,
+        mantendo o histórico da conversa. É essencial para implementar lógicas
+        como reenvios para completar conteúdo (ex: mapas mentais OPML).
+        
+        Args:
+            messages: Lista de mensagens no formato [{"role": "user/assistant", "content": "..."}]
+            
+        Returns:
+            Conteúdo da resposta do modelo.
+            
+        Raises:
+            Exception: Se houver erro na chamada do modelo.
+        """
+        try:
+            await self._ensure_client_initialized()
+            
+            result = await self.client.call_model(messages, self.model_name, new_line=True)
+            
+            if result is None:
+                raise Exception("Falha ao chamar modelo Gemini com mensagens")
+            
+            return remove_think_tags(result)
+            
+        except Exception as e:
+            raise Exception(f"Erro ao chamar modelo Gemini com mensagens: {e}")
     
     async def health_check(self) -> bool:
         """Verifica se o provedor de IA está funcionando corretamente.

@@ -144,6 +144,25 @@ class BaseContentGenerator(ABC):
         pass
     
     @abstractmethod
+    async def call_model_with_messages(self, messages: List[Dict[str, str]]) -> str:
+        """Chama o modelo diretamente com uma lista de mensagens.
+        
+        Este método permite enviar diretamente uma lista de mensagens para o modelo,
+        mantendo o histórico da conversa. É essencial para implementar lógicas
+        como reenvios para completar conteúdo (ex: mapas mentais OPML).
+        
+        Args:
+            messages: Lista de mensagens no formato [{"role": "user/assistant", "content": "..."}]
+            
+        Returns:
+            Conteúdo da resposta do modelo.
+            
+        Raises:
+            Exception: Se houver erro na chamada do modelo.
+        """
+        pass
+    
+    @abstractmethod
     async def health_check(self) -> bool:
         """Verifica se o provedor de IA está funcionando corretamente.
         

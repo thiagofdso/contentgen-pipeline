@@ -47,4 +47,5 @@ Additional instructions:
 - Make sure all elements are properly nested and closed.
 - Include detailed information, keeping the structure consistent throughout the document.
 - Do NOT include tabu characteres like \t
+- DO NOT include words like topic, subtopic, keypoint, tópico, subtópico, ponto-chave
 Once you have created your XML, review it to ensure that it is well-formatted and accurately represents the content and structure of your course.

@@ -1,5 +1,6 @@
 from pathlib import Path
 import subprocess
+import os
 from typing import Tuple
 
 from ..utils.logger import logger
@@ -17,19 +18,23 @@ class MediaProcessor:
         Returns:
             Caminho para o arquivo de áudio extraído (.mp3).
         """
-        audio_file_path = video_path.with_suffix('.mp3')
+        # Usa os.path para garantir compatibilidade
+        video_str = str(video_path)
+        video_dir = os.path.dirname(video_str)
+        filename = os.path.splitext(os.path.basename(video_str))[0]        
+        audio_file_path = Path(os.path.join(video_dir, f"{filename}.mp3"))
         logger.info(f"Extraindo áudio de {video_path} para {audio_file_path}")
         if not audio_file_path.exists():
             try:
                 command = [
                     'ffmpeg',
-                    '-i', str(video_path),
+                    '-i', video_str,
                     '-vn',
                     '-acodec', 'libmp3lame',
                     '-b:a', '192k',
                     str(audio_file_path)
                 ]
-                subprocess.run(command, check=True, capture_output=True,encoding="utf-8")
+                subprocess.run(command, check=True)
                 logger.info(f"Áudio extraído com sucesso: {audio_file_path}")
             except subprocess.CalledProcessError as e:
                 logger.error(f"Erro ao extrair áudio: {e.stderr.decode() if e.stderr else e}")

@@ -39,3 +39,5 @@ Instruções adicionais:
 - Certifique-se de capturar todos os pontos importantes das transcrições e resumos. Não deixe de fora informações cruciais que possam ser relevantes para o usuário final.
 - Se o conteúdo incluir exemplos ou estudos de caso, certifique-se de incluí-los na estrutura, indicando sua relevância para os tópicos relacionados.
 - Considere a possibilidade de adicionar um breve resumo (1-2 frases) para cada tópico principal, fornecendo uma visão geral do seu conteúdo.
+
+{texts}
