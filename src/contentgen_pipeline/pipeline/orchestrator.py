@@ -13,6 +13,7 @@ from datetime import datetime
 
 from ..core.media_processor import MediaProcessor
 from ..core.transcriber import Transcriber
+from ..core.video_downloader import VideoDownloader
 from ..generators.base import BaseContentGenerator
 from ..utils.logger import logger
 from ..config import settings
@@ -88,14 +89,19 @@ class PipelineOrchestrator:
             srt_path = output_dir / f"{base_name}.srt"
             md_path = output_dir / f"{base_name}.md"
 
-            # 1. Extração de áudio
+            # 1. Extração de áudio (só se não existir transcrição)
             if extract_audio:
-                audio_path = media_path.with_suffix('.mp3')
-                if not audio_path.exists():
-                    logger.info("Extraindo áudio do arquivo de mídia...")
-                    audio_path = await self._extract_audio(media_path)
+                # Verificar se já existe transcrição (.txt ou .srt)
+                if txt_path.exists() or srt_path.exists():
+                    logger.info(f"Transcrição já existe para {media_path.name} (.txt ou .srt encontrado), pulando extração de áudio.")
+                    audio_path = media_path.with_suffix('.mp3')
                 else:
-                    logger.info(f"Áudio já existe: {audio_path}")
+                    audio_path = media_path.with_suffix('.mp3')
+                    if not audio_path.exists():
+                        logger.info("Extraindo áudio do arquivo de mídia...")
+                        audio_path = await self._extract_audio(media_path)
+                    else:
+                        logger.info(f"Áudio já existe: {audio_path}")
             else:
                 audio_path = media_path.with_suffix('.mp3')
 
@@ -123,109 +129,63 @@ class PipelineOrchestrator:
                 transcript_result = {"text": transcript_text, "segments": []}
                 transcript_files = {"transcript": str(txt_path), "subtitles": str(srt_path) if srt_path.exists() else ""}
 
-            # 3. Diagramação e 4. Resumo
-            diagrammed_text = transcript_result["text"]
+            # 3. Diagramação, 4. Resumo e 5. Mapa mental (executados em paralelo)
             if md_path.exists():
                 logger.info(f"Resumo já existe para {media_path.name}, pulando diagramação e resumo.")
                 summary = md_path.read_text(encoding="utf-8")
                 content_files["summary"] = summary
+                # Mesmo com resumo existente, ainda podemos fazer diagramação e mapa mental
+                diagrammed_text = transcript_result["text"]
             else:
-                if diagram:
-                    logger.info("Gerando diagramação...")
-                    diagrammed_text = await self.generators["diagram"].diagram(transcript_result["text"])
-                    tamanho_original = len(transcript_result["text"].encode("utf-8"))
-                    tamanho_diagramado = len(diagrammed_text.encode("utf-8"))
-                    if tamanho_diagramado > tamanho_original:
-                        txt_path.write_text(diagrammed_text, encoding="utf-8")
-                        logger.info(f"Arquivo diagramado sobrescrito: {txt_path}")
-                    else:
-                        logger.info("Conteúdo diagramado não é maior que o original. Não sobrescrevendo o .txt.")
-                    content_files["diagrammed"] = diagrammed_text
-                else:
-                    diagrammed_text = transcript_result["text"]
-                if summarize:
-                    logger.info("Gerando resumo...")
-                    summary = await self.generators["summarize"].summarize(diagrammed_text)
-                    md_path.write_text(summary, encoding="utf-8")
-                    logger.info(f"Resumo salvo em: {md_path}")
-                    content_files["summary"] = summary
+                diagrammed_text = transcript_result["text"]
+                summary = None
 
-            # 5. Mapa mental
+            # Executar diagramação, resumo e mapa mental em paralelo
+            tasks = []
+            task_names = []
+            
+            # Tarefa de diagramação (só se não existir resumo)
+            if diagram and not md_path.exists():
+                tasks.append(self._generate_diagram(transcript_result["text"], txt_path))
+                task_names.append("diagramação")
+            elif diagram and md_path.exists():
+                logger.info(f"Resumo já existe para {media_path.name}, pulando diagramação.")
+            
+            # Tarefa de resumo
+            if summarize and not md_path.exists():
+                tasks.append(self._generate_summary(transcript_result["text"], md_path))
+                task_names.append("resumo")
+            
+            # Tarefa de mapa mental
             if mindmap:
-                logger.info("Gerando mapa mental...")
                 mindmap_path = md_path.with_suffix('.opml')
                 if mindmap_path.exists():
                     logger.info(f"Mapa mental já existe para {media_path.name}, pulando geração: {mindmap_path}")
                     mindmap_result = mindmap_path.read_text(encoding="utf-8")
+                    content_files["mindmap"] = mindmap_result
                 else:
-                    # Buscar e unir transcrição e resumo
-                    txt_content = txt_path.read_text(encoding="utf-8") if txt_path.exists() else ""
-                    md_content = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
-                    if txt_content and md_content:
-                        logger.info(f"Usando transcrição e resumo para o mapa mental: {txt_path.name}, {md_path.name}")
-                        combined_content = f"Transcrição\n{txt_content}\n\nResumo\n{md_content}"
-                    elif txt_content:
-                        logger.info(f"Usando apenas transcrição para o mapa mental: {txt_path.name}")
-                        combined_content = f"Transcrição\n{txt_content}"
-                    elif md_content:
-                        logger.info(f"Usando apenas resumo para o mapa mental: {md_path.name}")
-                        combined_content = f"Resumo\n{md_content}"
+                    tasks.append(self._generate_mindmap(transcript_result["text"], mindmap_path, base_name))
+                    task_names.append("mapa mental")
+            
+            # Executar tarefas em paralelo
+            if tasks:
+                logger.info(f"Executando em paralelo: {', '.join(task_names)}")
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Processar resultados
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Erro na {task_names[i]}: {str(result)}")
                     else:
-                        logger.warning(f"Nenhum .txt ou .md encontrado para {media_path.name}, não é possível gerar o mapa mental.")
-                        combined_content = ""
-                    if combined_content:
-                        # Pré-processamento da estrutura
-                        estrutura = await self.generators["mindmap_preprocess"].preprocess_mindmap([combined_content])
-                        logger.debug(f"Estrutura pré-processada: {estrutura}")
-                        # Carregar prompt do mindmap.txt
-                        mindmap_prompt = self.generators["mindmap"]._load_prompt("mindmap")
-                        # Montar prompt OPML
-                        initial_xml = f'<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n<head>\n<title>{base_name}</title>\n<dateCreated>{datetime.now().isoformat()}</dateCreated>\n</head>\n<body>\n<outline text="{base_name}">\n'
-                        prompt = (
-                            f"{mindmap_prompt}\n\nEstrutura pré-processada:\n\n{base_name}:\n{estrutura}\n\nPor favor, gere o arquivo XML OPML 2.0 com base na estrutura fornecida. Responda apenas com o XML OPML 2.0!\n\nConsidere que o inicio do xml é o seguinte e continue EXATAMENTE após ele, sem enviar o mesmo inicio:\n\n{initial_xml}\n\nNÃO REPITA ESSE TRECHO NA SUA RESPOSTA!"
-                        )
-                        
-                        # Mecanismo de reenvio até completar o OPML (replicando mapaMentalArquivo.py)
-                        messages = [{"role": "user", "content": prompt}]
-                        resposta = initial_xml
-                        tentativa = 0
-                        max_tentativas = 10  # Evitar loop infinito
-                        
-                        while tentativa < max_tentativas:
-                            logger.debug(f"Rodada {tentativa + 1}")
-                            logger.info(f"Gerando mapa mental - tentativa {tentativa + 1}")
-                            
-                            # Gerar conteúdo usando call_model_with_messages
-                            nova_resposta = await self.generators["mindmap"].call_model_with_messages(messages)
-                            
-                            if nova_resposta is None:
-                                logger.error(f"Erro na requisição na tentativa {tentativa + 1}")
-                                tentativa += 1
-                                continue
-                            
-                            resposta += nova_resposta
-                            
-                            # Verificar se o OPML está completo
-                            if "</opml>" in resposta:
-                                logger.info("OPML completo gerado com sucesso")
-                                break
-                            
-                            # Preparar para próxima tentativa (replicando mapaMentalArquivo.py)
-                            messages.append({"role": "assistant", "content": nova_resposta})
-                            messages.append({"role": "user", "content": "Continue gerando o XML exatamente de onde parou."})
-                            tentativa += 1
-                        
-                        if tentativa >= max_tentativas:
-                            logger.warning(f"Limite de tentativas atingido para {media_path.name}. Salvando OPML parcial.")
-                        
-                        # Limpar caracteres especiais (replicando mapaMentalArquivo.py)
-                        mindmap_result = resposta.replace("```xml", "").replace("```", "")
-                        
-                        mindmap_path.write_text(mindmap_result, encoding="utf-8")
-                        logger.info(f"Mapa mental salvo em: {mindmap_path}")
-                    else:
-                        mindmap_result = ""
-                content_files["mindmap"] = mindmap_result
+                        if task_names[i] == "diagramação":
+                            content_files["diagrammed"] = result
+                        elif task_names[i] == "resumo":
+                            content_files["summary"] = result
+                        elif task_names[i] == "mapa mental":
+                            content_files["mindmap"] = result
+            else:
+                logger.info("Nenhuma tarefa de conteúdo para executar.")
+
             result = {
                 "media_path": str(media_path),
                 "transcript_files": transcript_files,
@@ -242,32 +202,70 @@ class PipelineOrchestrator:
             raise
     
     def _find_video_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos de vídeo suportados em um diretório."""
+        """Encontra todos os arquivos de vídeo suportados em um diretório e subpastas."""
         supported_extensions = {".mp4", ".avi", ".mkv", ".webm", ".mov", ".m4v"}
-        files = [
-            f for f in directory_path.iterdir()
-            if f.is_file() and f.suffix.lower() in supported_extensions
-        ]
+        files = []
+        for extension in supported_extensions:
+            files.extend(directory_path.rglob(f"*{extension}"))
+            files.extend(directory_path.rglob(f"*{extension.upper()}"))
         files.sort(key=lambda x: x.name)
         return files
 
     def _find_txt_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos .txt em um diretório, ordenados por nome."""
-        files = [
-            f for f in directory_path.iterdir()
-            if f.is_file() and f.suffix.lower() == '.txt'
-        ]
+        """Encontra todos os arquivos .txt em um diretório e subpastas, ordenados por nome."""
+        files = list(directory_path.rglob("*.txt"))
+        files.extend(directory_path.rglob("*.TXT"))
         files.sort(key=lambda x: x.name)
         return files
 
     def _find_md_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos .md em um diretório, ordenados por nome."""
-        files = [
-            f for f in directory_path.iterdir()
-            if f.is_file() and f.suffix.lower() == '.md'
-        ]
+        """Encontra todos os arquivos .md em um diretório e subpastas, ordenados por nome."""
+        files = list(directory_path.rglob("*.md"))
+        files.extend(directory_path.rglob("*.MD"))
         files.sort(key=lambda x: x.name)
         return files
+
+    def _find_all_input_files(self, directory_path: Path) -> List[Tuple[Path, int]]:
+        """Encontra todos os arquivos que podem ser processados, ordenados por prioridade.
+        
+        Prioridade (do mais processado para o menos):
+        1 = .md (resumo já existe)
+        2 = .txt (transcrição já existe) 
+        3 = .mp3 (áudio já existe)
+        4 = vídeos (.mp4, .avi, etc.)
+        
+        Args:
+            directory_path: Caminho para o diretório.
+            
+        Returns:
+            Lista de tuplas: (caminho_arquivo, prioridade) ordenada por prioridade.
+        """
+        input_files = []
+        
+        # 1. Arquivos .md (prioridade 1)
+        md_files = self._find_md_files(directory_path)
+        for file_path in md_files:
+            input_files.append((file_path, 1))
+        
+        # 2. Arquivos .txt (prioridade 2)
+        txt_files = self._find_txt_files(directory_path)
+        for file_path in txt_files:
+            input_files.append((file_path, 2))
+        
+        # 3. Arquivos .mp3 (prioridade 3)
+        mp3_files = self._find_mp3_files(directory_path)
+        for file_path in mp3_files:
+            input_files.append((file_path, 3))
+        
+        # 4. Arquivos de vídeo (prioridade 4)
+        video_files = self._find_video_files(directory_path)
+        for file_path in video_files:
+            input_files.append((file_path, 4))
+        
+        # Ordenar por prioridade (menor número = maior prioridade)
+        input_files.sort(key=lambda x: x[1])
+        
+        return input_files
 
     async def process_directory(
         self,
@@ -278,77 +276,63 @@ class PipelineOrchestrator:
         summarize: bool = True,
         mindmap: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Processa todos os arquivos relevantes em um diretório, de acordo com cada etapa do pipeline."""
+        """Processa todos os arquivos de entrada em um diretório através do pipeline completo.
+        
+        Este método encontra todos os tipos de arquivos processáveis (vídeo, áudio, texto, resumo)
+        e executa o pipeline sequencial completo para cada um, respeitando a ordem de prioridade.
+        
+        Args:
+            directory_path: Caminho para o diretório contendo arquivos de entrada.
+            extract_audio: Se True, extrai o áudio do vídeo.
+            transcribe: Se True, transcreve o áudio.
+            diagram: Se True, gera diagramação do texto.
+            summarize: Se True, gera resumo do texto.
+            mindmap: Se True, gera mapa mental a partir do(s) texto(s).
+            
+        Returns:
+            Lista de dicionários com informações sobre os arquivos processados.
+        """
         if not directory_path.exists():
             raise FileNotFoundError(f"Diretório não encontrado: {directory_path}")
         if not directory_path.is_dir():
             raise ValueError(f"O caminho não é um diretório: {directory_path}")
+        
+        # Encontrar todos os arquivos de entrada ordenados por prioridade
+        input_files = self._find_all_input_files(directory_path)
+        
+        if not input_files:
+            logger.warning(f"Nenhum arquivo de entrada encontrado em: {directory_path}")
+            return []
+        
+        logger.info(f"Encontrados {len(input_files)} arquivos de entrada para processamento:")
+        for file_path, priority in input_files:
+            priority_name = {1: "resumo", 2: "transcrição", 3: "áudio", 4: "vídeo"}[priority]
+            logger.info(f"  - {file_path.name} ({priority_name})")
+        
         results = []
-        processed = set()
-        # 1. Extração de áudio: vídeos
-        if extract_audio:
-            video_files = self._find_video_files(directory_path)
-            logger.info(f"[Pipeline] Encontrados {len(video_files)} arquivos de vídeo para extração de áudio.")
-            for video_file in video_files:
-                if str(video_file) not in processed:
-                    res = await self.process_single_file(
-                        video_file,
-                        extract_audio=True,
-                        transcribe=False,
-                        diagram=False,
-                        summarize=False,
-                        mindmap=False
-                    )
-                    results.append(res)
-                    processed.add(str(video_file))
-        # 2. Transcrição: áudios
-        if transcribe:
-            mp3_files = self._find_mp3_files(directory_path)
-            logger.info(f"[Pipeline] Encontrados {len(mp3_files)} arquivos .mp3 para transcrição.")
-            for mp3_file in mp3_files:
-                if str(mp3_file) not in processed:
-                    res = await self.process_single_file(
-                        mp3_file,
-                        extract_audio=False,
-                        transcribe=True,
-                        diagram=False,
-                        summarize=False,
-                        mindmap=False
-                    )
-                    results.append(res)
-                    processed.add(str(mp3_file))
-        # 3. Diagramação e 4. Resumo: .txt
-        if diagram or summarize:
-            txt_files = self._find_txt_files(directory_path)
-            logger.info(f"[Pipeline] Encontrados {len(txt_files)} arquivos .txt para diagramação/resumo.")
-            for txt_file in txt_files:
-                if str(txt_file) not in processed:
-                    res = await self.process_single_file(
-                        txt_file,
-                        extract_audio=False,
-                        transcribe=False,
-                        diagram=diagram,
-                        summarize=summarize,
-                        mindmap=False
-                    )
-                    results.append(res)
-                    processed.add(str(txt_file))
-        # 5. Mapa mental: .txt e .md
-        if mindmap:
-            mindmap_files = self._find_txt_files(directory_path) + self._find_md_files(directory_path)
-            logger.info(f"[Pipeline] Encontrados {len(mindmap_files)} arquivos .txt/.md para mapa mental.")
-            for mm_file in mindmap_files:
-                if str(mm_file) not in processed:
-                    res = await self.process_single_file(
-                        mm_file,
-                        extract_audio=False,
-                        transcribe=False,
-                        diagram=False,
-                        summarize=False,
-                        mindmap=True
-                    )
-                    results.append(res)
-                    processed.add(str(mm_file))
+        for i, (file_path, priority) in enumerate(input_files, 1):
+            priority_name = {1: "resumo", 2: "transcrição", 3: "áudio", 4: "vídeo"}[priority]
+            logger.info(f"Processando arquivo {i}/{len(input_files)}: {file_path.name} ({priority_name})")
+            try:
+                result = await self.process_single_file(
+                    file_path,
+                    extract_audio=extract_audio,
+                    transcribe=transcribe,
+                    diagram=diagram,
+                    summarize=summarize,
+                    mindmap=mindmap
+                )
+                results.append(result)
+                logger.info(f"✓ Concluído: {file_path.name}")
+            except Exception as e:
+                logger.error(f"✗ Erro ao processar {file_path.name}: {str(e)}")
+                results.append({
+                    "media_path": str(file_path),
+                    "error": str(e),
+                    "status": "error"
+                })
+        
+        logger.info(f"Processamento do diretório concluído. {len(results)} arquivos processados.")
         return results
     
     async def _extract_audio(self, media_path: Path) -> Path:
@@ -440,20 +424,21 @@ class PipelineOrchestrator:
             logger.warning(f"Erro ao remover arquivo de áudio {audio_path}: {str(e)}")
     
     def _find_mp3_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos .mp3 em um diretório, ordenados por nome."""
-        files = [
-            f for f in directory_path.iterdir()
-            if f.is_file() and f.suffix.lower() == '.mp3'
-        ]
+        """Encontra todos os arquivos .mp3 em um diretório e subpastas, ordenados por nome."""
+        files = list(directory_path.rglob("*.mp3"))
+        files.extend(directory_path.rglob("*.MP3"))
         files.sort(key=lambda x: x.name)
         return files
 
     def _find_text_and_md_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos .txt e .md em um diretório, ordenados por nome."""
-        files = [
-            f for f in directory_path.iterdir()
-            if f.is_file() and f.suffix.lower() in {'.txt', '.md'}
-        ]
+        """Encontra todos os arquivos .txt e .md em um diretório e subpastas, ordenados por nome."""
+        files = []
+        # Buscar arquivos .txt
+        files.extend(directory_path.rglob("*.txt"))
+        files.extend(directory_path.rglob("*.TXT"))
+        # Buscar arquivos .md
+        files.extend(directory_path.rglob("*.md"))
+        files.extend(directory_path.rglob("*.MD"))
         files.sort(key=lambda x: x.name)
         return files
 
@@ -503,12 +488,13 @@ class PipelineOrchestrator:
             "orchestrator": "healthy",
             "media_processor": "unknown",
             "transcriber": "unknown",
-            "content_generator": "unknown"
+            "content_generator": "unknown",
+            "video_downloader": "unknown"
         }
         
         try:
             # Verificar gerador de conteúdo
-            if await self.content_generator.health_check():
+            if self.content_generator and await self.content_generator.health_check():
                 health_status["content_generator"] = "healthy"
             else:
                 health_status["content_generator"] = "unhealthy"
@@ -534,7 +520,15 @@ class PipelineOrchestrator:
         except Exception as e:
             health_status["media_processor"] = f"error: {str(e)}"
         
-        return health_status 
+        # Verificar video downloader
+        try:
+            video_downloader = VideoDownloader()
+            downloader_health = video_downloader.health_check()
+            health_status["video_downloader"] = downloader_health["status"]
+        except Exception as e:
+            health_status["video_downloader"] = f"error: {str(e)}"
+        
+        return health_status
     
     async def watch_directory(
         self,
@@ -602,7 +596,7 @@ class PipelineOrchestrator:
             raise
 
     def _find_media_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos de mídia suportados em um diretório.
+        """Encontra todos os arquivos de mídia suportados em um diretório e subpastas.
         
         Args:
             directory_path: Caminho para o diretório.
@@ -613,9 +607,9 @@ class PipelineOrchestrator:
         supported_extensions = {".mp4", ".avi", ".mkv", ".webm", ".mov", ".m4v"}
         media_files = []
         
-        for file_path in directory_path.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                media_files.append(file_path)
+        for extension in supported_extensions:
+            media_files.extend(directory_path.rglob(f"*{extension}"))
+            media_files.extend(directory_path.rglob(f"*{extension.upper()}"))
         
         # Ordenar por nome para processamento consistente
         media_files.sort(key=lambda x: x.name)
@@ -660,3 +654,204 @@ class PipelineOrchestrator:
                 "status": "success"
             })
         return results
+
+    async def _generate_diagram(self, text: str, txt_path: Path) -> str:
+        """Gera diagramação do texto transcrito.
+        
+        Args:
+            text: Texto transcrito para diagramar.
+            txt_path: Caminho do arquivo .txt para salvar.
+            
+        Returns:
+            Texto diagramado.
+        """
+        logger.info("Gerando diagramação...")
+        diagrammed_text = await self.generators["diagram"].diagram(text)
+        tamanho_original = len(text.encode("utf-8"))
+        tamanho_diagramado = len(diagrammed_text.encode("utf-8"))
+        if tamanho_diagramado > tamanho_original:
+            txt_path.write_text(diagrammed_text, encoding="utf-8")
+            logger.info(f"Arquivo diagramado sobrescrito: {txt_path}")
+        else:
+            logger.info("Conteúdo diagramado não é maior que o original. Não sobrescrevendo o .txt.")
+        return diagrammed_text
+
+    async def _generate_summary(self, text: str, md_path: Path) -> str:
+        """Gera resumo do texto transcrito.
+        
+        Args:
+            text: Texto transcrito para resumir.
+            md_path: Caminho do arquivo .md para salvar.
+            
+        Returns:
+            Resumo em formato markdown.
+        """
+        logger.info("Gerando resumo...")
+        summary = await self.generators["summarize"].summarize(text)
+        md_path.write_text(summary, encoding="utf-8")
+        logger.info(f"Resumo salvo em: {md_path}")
+        return summary
+
+    async def _generate_mindmap(self, text: str, mindmap_path: Path, base_name: str) -> str:
+        """Gera mapa mental a partir do texto transcrito.
+        
+        Args:
+            text: Texto transcrito para gerar mapa mental.
+            mindmap_path: Caminho do arquivo .opml para salvar.
+            base_name: Nome base do arquivo.
+            
+        Returns:
+            Conteúdo do mapa mental em formato OPML.
+        """
+        logger.info("Gerando mapa mental...")
+        
+        # Pré-processamento da estrutura
+        estrutura = await self.generators["mindmap_preprocess"].preprocess_mindmap([text])
+        logger.debug(f"Estrutura pré-processada: {estrutura}")
+        
+        # Carregar prompt do mindmap.txt
+        mindmap_prompt = self.generators["mindmap"]._load_prompt("mindmap")
+        
+        # Montar prompt OPML
+        initial_xml = f'<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n<head>\n<title>{base_name}</title>\n<dateCreated>{datetime.now().isoformat()}</dateCreated>\n</head>\n<body>\n<outline text="{base_name}">\n'
+        prompt = (
+            f"{mindmap_prompt}\n\nEstrutura pré-processada:\n\n{base_name}:\n{estrutura}\n\nPor favor, gere o arquivo XML OPML 2.0 com base na estrutura fornecida. Responda apenas com o XML OPML 2.0!\n\nConsidere que o inicio do xml é o seguinte e continue EXATAMENTE após ele, sem enviar o mesmo inicio:\n\n{initial_xml}\n\nNÃO REPITA ESSE TRECHO NA SUA RESPOSTA!"
+        )
+        
+        # Mecanismo de reenvio até completar o OPML (replicando mapaMentalArquivo.py)
+        messages = [{"role": "user", "content": prompt}]
+        resposta = initial_xml
+        tentativa = 0
+        max_tentativas = 10  # Evitar loop infinito
+        
+        while tentativa < max_tentativas:
+            logger.debug(f"Rodada {tentativa + 1}")
+            logger.info(f"Gerando mapa mental - tentativa {tentativa + 1}")
+            
+            # Gerar conteúdo usando call_model_with_messages
+            nova_resposta = await self.generators["mindmap"].call_model_with_messages(messages)
+            
+            if nova_resposta is None:
+                logger.error(f"Erro na requisição na tentativa {tentativa + 1}")
+                tentativa += 1
+                continue
+            
+            resposta += nova_resposta
+            
+            # Verificar se o OPML está completo
+            if "</opml>" in resposta:
+                logger.info("OPML completo gerado com sucesso")
+                break
+            
+            # Preparar para próxima tentativa (replicando mapaMentalArquivo.py)
+            messages.append({"role": "assistant", "content": nova_resposta})
+            messages.append({"role": "user", "content": "Continue gerando o XML exatamente de onde parou."})
+            tentativa += 1
+        
+        if tentativa >= max_tentativas:
+            logger.warning(f"Limite de tentativas atingido. Salvando OPML parcial.")
+        
+        # Limpar caracteres especiais (replicando mapaMentalArquivo.py)
+        mindmap_result = resposta.replace("```xml", "").replace("```", "")
+        
+        mindmap_path.write_text(mindmap_result, encoding="utf-8")
+        logger.info(f"Mapa mental salvo em: {mindmap_path}")
+        return mindmap_result
+
+    async def download_videos_from_csv(
+        self,
+        csv_path: Path,
+        output_dir: Optional[Path] = None,
+        batch_size: int = 50,
+        interactive: bool = True,
+        overwrite: bool = False,
+        verbose: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Baixa vídeos do YouTube a partir de um arquivo CSV.
+        
+        Args:
+            csv_path: Caminho para o arquivo CSV com URLs.
+            output_dir: Diretório de saída para os vídeos.
+            batch_size: Número de vídeos por lote.
+            interactive: Se True, pergunta ao usuário para continuar entre lotes.
+            overwrite: Se True, sobrescreve arquivos existentes.
+            verbose: Se True, exibe logs detalhados.
+            
+        Returns:
+            Lista de dicionários com resultados dos downloads.
+        """
+        # Criar downloader
+        downloader = VideoDownloader(output_dir=output_dir)
+        
+        # Verificar saúde do yt-dlp
+        health_status = downloader.health_check()
+        if health_status["status"] != "healthy":
+            raise RuntimeError(f"yt-dlp não está disponível: {health_status.get('error', 'Erro desconhecido')}")
+        
+        logger.info(f"yt-dlp disponível: versão {health_status.get('version', 'desconhecida')}")
+        logger.info(f"Diretório de saída: {downloader.output_dir}")
+        
+        # Executar download
+        return await downloader.download_from_csv(
+            csv_path=csv_path,
+            batch_size=batch_size,
+            interactive=interactive,
+            overwrite=overwrite,
+            verbose=verbose
+        )
+    
+    async def download_single_video(
+        self,
+        url: str,
+        output_dir: Optional[Path] = None,
+        overwrite: bool = False,
+        verbose: bool = False
+    ) -> Dict[str, Any]:
+        """Baixa um único vídeo do YouTube.
+        
+        Args:
+            url: URL do vídeo do YouTube.
+            output_dir: Diretório de saída para o vídeo.
+            overwrite: Se True, sobrescreve arquivo existente.
+            verbose: Se True, exibe logs detalhados.
+            
+        Returns:
+            Dicionário com resultado do download.
+        """
+        # Criar downloader
+        downloader = VideoDownloader(output_dir=output_dir)
+        
+        # Verificar saúde do yt-dlp
+        health_status = downloader.health_check()
+        if health_status["status"] != "healthy":
+            raise RuntimeError(f"yt-dlp não está disponível: {health_status.get('error', 'Erro desconhecido')}")
+        
+        logger.info(f"yt-dlp disponível: versão {health_status.get('version', 'desconhecida')}")
+        logger.info(f"Diretório de saída: {downloader.output_dir}")
+        
+        # Executar download
+        return await downloader.download_single_url(
+            url=url,
+            overwrite=overwrite,
+            verbose=verbose
+        )
+
+    async def create_example_csv(self, csv_path: Path) -> None:
+        """Cria um arquivo CSV de exemplo com URLs do YouTube.
+        
+        Args:
+            csv_path: Caminho para o arquivo CSV a ser criado.
+        """
+        import pandas as pd
+        
+        example_data = {
+            'url': [
+                'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                'https://www.youtube.com/watch?v=example2',
+                'https://www.youtube.com/watch?v=example3'
+            ]
+        }
+        
+        df = pd.DataFrame(example_data)
+        df.to_csv(csv_path, index=False)
+        logger.info(f"Arquivo CSV de exemplo criado: {csv_path}")

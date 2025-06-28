@@ -5,8 +5,9 @@ do pipeline de geração de conteúdo.
 """
 
 import asyncio
+import subprocess
 from pathlib import Path
-from typing import Optional, cast, Dict
+from typing import Optional, cast, Dict, List
 
 import typer
 from rich.console import Console
@@ -347,6 +348,190 @@ def health(
     
     except Exception as e:
         logger.error(f"Erro na verificação de saúde: {str(e)}")
+        console.print(f"[red]Erro: {str(e)}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def download(
+    csv_file: Optional[Path] = typer.Argument(
+        None,
+        help="Caminho para arquivo CSV com URLs dos vídeos (padrão: videos.csv)"
+    ),
+    output_dir: Optional[Path] = typer.Option(
+        None,
+        "--output", "-o",
+        help="Diretório de saída para os vídeos (padrão: VIDEO_FOLDER do .env)"
+    ),
+    batch_size: int = typer.Option(
+        50,
+        "--batch-size", "-b",
+        help="Número de vídeos por lote (default: 50)"
+    ),
+    no_interactive: bool = typer.Option(
+        False,
+        "--no-interactive",
+        help="Não perguntar para continuar entre lotes (executa tudo automaticamente)"
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Sobrescrever arquivos existentes"
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Modo verboso com logs detalhados"
+    )
+):
+    """Baixa vídeos do YouTube a partir de um arquivo CSV.
+    
+    O arquivo CSV deve ter uma coluna chamada 'url' com as URLs dos vídeos.
+    """
+    try:
+        # Determinar arquivo CSV
+        if csv_file is None:
+            csv_file = Path("videos.csv")
+            if not csv_file.exists():
+                console.print("[yellow]Arquivo videos.csv não encontrado. Criando exemplo...[/yellow]")
+                # Criar orquestrador temporário para criar o CSV
+                temp_orchestrator = PipelineOrchestrator({})
+                asyncio.run(temp_orchestrator.create_example_csv(csv_file))
+                console.print(f"[green]Arquivo de exemplo criado: {csv_file}[/green]")
+                console.print("[blue]Adicione as URLs dos vídeos na coluna 'url' e execute novamente.[/blue]")
+                raise typer.Exit(0)
+        
+        # Validar arquivo CSV
+        if not csv_file.exists():
+            console.print(f"[red]Erro: Arquivo CSV não encontrado: {csv_file}[/red]")
+            raise typer.Exit(1)
+        
+        # Criar orquestrador
+        orchestrator = PipelineOrchestrator({})
+        
+        # Executar download via orquestrador
+        console.print(f"[blue]Iniciando download de vídeos do arquivo: {csv_file}[/blue]")
+        
+        results = asyncio.run(orchestrator.download_videos_from_csv(
+            csv_path=csv_file,
+            output_dir=output_dir,
+            batch_size=batch_size,
+            interactive=not no_interactive,
+            overwrite=overwrite,
+            verbose=verbose
+        ))
+        
+        # Exibir resultados
+        if results:
+            results_table = Table(title="Resultados dos Downloads")
+            results_table.add_column("URL", style="cyan", max_width=50)
+            results_table.add_column("Status", style="green")
+            results_table.add_column("Detalhes", style="yellow")
+            
+            successful = 0
+            failed = 0
+            skipped = 0
+            
+            for result in results:
+                url = result.get("url", "Desconhecida")
+                status = result.get("status", "desconhecido")
+                
+                if status == "success":
+                    status_style = "green"
+                    status_text = "✅ Sucesso"
+                    details = "Vídeo baixado com sucesso"
+                    successful += 1
+                elif status == "skipped":
+                    status_style = "yellow"
+                    status_text = "⏭️ Pulado"
+                    details = result.get("error", "URL inválida")
+                    skipped += 1
+                else:
+                    status_style = "red"
+                    status_text = "❌ Erro"
+                    details = result.get("error", "Erro desconhecido")
+                    failed += 1
+                
+                # Truncar URL para exibição
+                display_url = url[:47] + "..." if len(url) > 50 else url
+                
+                results_table.add_row(
+                    display_url,
+                    f"[{status_style}]{status_text}[/{status_style}]",
+                    details
+                )
+            
+            console.print(results_table)
+            
+            # Estatísticas
+            console.print(f"\n[green]✅ Sucessos: {successful}[/green]")
+            if failed > 0:
+                console.print(f"[red]❌ Falhas: {failed}[/red]")
+            if skipped > 0:
+                console.print(f"[yellow]⏭️ Pulados: {skipped}[/yellow]")
+        
+        else:
+            console.print("[yellow]Nenhum vídeo foi processado.[/yellow]")
+    
+    except Exception as e:
+        logger.error(f"Erro durante o download: {str(e)}")
+        console.print(f"[red]Erro: {str(e)}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def download_url(
+    url: str = typer.Argument(
+        ...,
+        help="URL do vídeo do YouTube para baixar"
+    ),
+    output_dir: Optional[Path] = typer.Option(
+        None,
+        "--output", "-o",
+        help="Diretório de saída para o vídeo (padrão: VIDEO_FOLDER do .env)"
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Sobrescrever arquivo existente"
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose", "-v",
+        help="Modo verboso com logs detalhados"
+    )
+):
+    """Baixa um único vídeo do YouTube a partir da URL fornecida."""
+    try:
+        # Validar URL
+        if not url.strip().startswith('http'):
+            console.print("[red]Erro: URL inválida. Deve começar com 'http'[/red]")
+            raise typer.Exit(1)
+        
+        # Criar orquestrador
+        orchestrator = PipelineOrchestrator({})
+        
+        # Executar download via orquestrador
+        console.print(f"[blue]Baixando vídeo: {url}[/blue]")
+        
+        result = asyncio.run(orchestrator.download_single_video(
+            url=url,
+            output_dir=output_dir,
+            overwrite=overwrite,
+            verbose=verbose
+        ))
+        
+        # Exibir resultado
+        if result["status"] == "success":
+            console.print(f"[green]✅ Vídeo baixado com sucesso![/green]")
+            if result.get("file_path"):
+                console.print(f"[blue]Arquivo: {result['file_path']}[/blue]")
+        else:
+            console.print(f"[red]❌ Erro ao baixar vídeo: {result.get('error', 'Erro desconhecido')}[/red]")
+            raise typer.Exit(1)
+    
+    except Exception as e:
+        logger.error(f"Erro durante o download: {str(e)}")
         console.print(f"[red]Erro: {str(e)}[/red]")
         raise typer.Exit(1)
 
