@@ -92,7 +92,7 @@ class PipelineOrchestrator:
             # 1. Extração de áudio (só se não existir transcrição)
             if extract_audio:
                 # Verificar se já existe transcrição (.txt ou .srt)
-                if txt_path.exists() or srt_path.exists():
+                if txt_path.exists() and srt_path.exists():
                     logger.info(f"Transcrição já existe para {media_path.name} (.txt ou .srt encontrado), pulando extração de áudio.")
                     audio_path = media_path.with_suffix('.mp3')
                 else:
@@ -396,14 +396,20 @@ class PipelineOrchestrator:
         
         # Salvar transcrição em texto
         txt_path = output_dir / f"{base_name}.txt"
-        txt_path.write_text(transcript_result["text"], encoding="utf-8")
-        logger.debug(f"Transcrição salva: {txt_path}")
+        if not txt_path.exists():
+            txt_path.write_text(transcript_result["text"], encoding="utf-8")
+            logger.debug(f"Transcrição salva: {txt_path}")
+        else:
+            logger.info(f"Arquivo de transcrição já existe, pulando: {txt_path}")
         
         # Salvar legendas SRT
         srt_path = output_dir / f"{base_name}.srt"
-        srt_content = self._generate_srt_content(transcript_result["segments"])
-        srt_path.write_text(srt_content, encoding="utf-8")
-        logger.debug(f"Legendas salvas: {srt_path}")
+        if not srt_path.exists():
+            srt_content = self._generate_srt_content(transcript_result["segments"])
+            srt_path.write_text(srt_content, encoding="utf-8")
+            logger.debug(f"Legendas salvas: {srt_path}")
+        else:
+            logger.info(f"Arquivo de legendas já existe, pulando: {srt_path}")
         
         return {
             "transcript": str(txt_path),
