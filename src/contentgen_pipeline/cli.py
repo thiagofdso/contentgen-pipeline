@@ -407,7 +407,15 @@ def download(
             raise typer.Exit(1)
         
         # Criar orquestrador
-        orchestrator = PipelineOrchestrator({})
+        default_generator = GeminiGenerator()
+        generators = {
+            "default": default_generator,
+            "summarize": default_generator,
+            "diagram": default_generator,
+            "mindmap_preprocess": default_generator,
+            "mindmap": default_generator
+        }
+        orchestrator = PipelineOrchestrator(generators)
         
         # Executar download via orquestrador
         console.print(f"[blue]Iniciando download de vídeos do arquivo: {csv_file}[/blue]")
@@ -509,7 +517,15 @@ def download_url(
             raise typer.Exit(1)
         
         # Criar orquestrador
-        orchestrator = PipelineOrchestrator({})
+        default_generator = GeminiGenerator()
+        generators = {
+            "default": default_generator,
+            "summarize": default_generator,
+            "diagram": default_generator,
+            "mindmap_preprocess": default_generator,
+            "mindmap": default_generator
+        }
+        orchestrator = PipelineOrchestrator(generators)
         
         # Executar download via orquestrador
         console.print(f"[blue]Baixando vídeo: {url}[/blue]")
