@@ -39,7 +39,7 @@ class ClaudeGenerator(BaseContentGenerator):
             connect_timeout=120.0,  # 2 minutos para conexão
             read_timeout=600.0  # 10 minutos para leitura
         )
-        self.model_name = "CLAUDE"
+        self.model_name = "CLAUDE_4"
         self._client_initialized = False
     
     async def _ensure_client_initialized(self):
@@ -221,7 +221,7 @@ class ClaudeGenerator(BaseContentGenerator):
         Returns:
             Lista de nomes dos modelos suportados.
         """
-        return ["CLAUDE"]
+        return ["CLAUDE_4"]
     
     def get_provider_name(self) -> str:
         """Retorna o nome do provedor de IA.

@@ -421,7 +421,7 @@ class AdaptaClient:
     async def call_model(
         self,
         messages: List[Dict[str, str]],
-        model: str = "GPT",
+        model: str = "GPT_5",
         new_line: bool = True
     ) -> Optional[str]:
         """Chama um modelo específico da API Adapta.one.

@@ -89,21 +89,28 @@ class PipelineOrchestrator:
             srt_path = output_dir / f"{base_name}.srt"
             md_path = output_dir / f"{base_name}.md"
 
+            # Função auxiliar para determinar o caminho do áudio
+            def get_audio_path(media_path: Path) -> Path:
+                audio_extensions = [".mp3", ".wav", ".m4a", ".opus"]
+                if media_path.suffix.lower() in audio_extensions:
+                    return media_path
+                return media_path.with_suffix('.mp3')
+
             # 1. Extração de áudio (só se não existir transcrição)
             if extract_audio:
                 # Verificar se já existe transcrição (.txt ou .srt)
                 if txt_path.exists() and srt_path.exists():
                     logger.info(f"Transcrição já existe para {media_path.name} (.txt ou .srt encontrado), pulando extração de áudio.")
-                    audio_path = media_path.with_suffix('.mp3')
+                    audio_path = get_audio_path(media_path)
                 else:
-                    audio_path = media_path.with_suffix('.mp3')
+                    audio_path = get_audio_path(media_path)
                     if not audio_path.exists():
                         logger.info("Extraindo áudio do arquivo de mídia...")
                         audio_path = await self._extract_audio(media_path)
                     else:
                         logger.info(f"Áudio já existe: {audio_path}")
             else:
-                audio_path = media_path.with_suffix('.mp3')
+                audio_path = get_audio_path(media_path)
 
             # 2. Transcrição
             if transcribe:
@@ -430,9 +437,12 @@ class PipelineOrchestrator:
             logger.warning(f"Erro ao remover arquivo de áudio {audio_path}: {str(e)}")
     
     def _find_mp3_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos .mp3 em um diretório e subpastas, ordenados por nome."""
-        files = list(directory_path.rglob("*.mp3"))
-        files.extend(directory_path.rglob("*.MP3"))
+        """Encontra todos os arquivos de áudio em um diretório e subpastas, ordenados por nome."""
+        audio_extensions = [".mp3", ".wav", ".m4a", ".opus"]
+        files = []
+        for ext in audio_extensions:
+            files.extend(directory_path.rglob(f"*{ext}"))
+            files.extend(directory_path.rglob(f"*{ext.upper()}"))
         files.sort(key=lambda x: x.name)
         return files
 

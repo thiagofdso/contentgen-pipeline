@@ -21,7 +21,8 @@ dependencies = [
     "pydantic-settings (>=2.9.1,<3.0.0)",
     "numba (>=0.61.2,<0.62.0)",
     "tqdm (>=4.67.1,<5.0.0)",
-    "pandas (>=2.3.0,<3.0.0)"
+    "pandas (>=2.3.0,<3.0.0)",
+    "transcription-library @ git+https://github.com/thiagofdso/transcription_library.git"
 ]
 
 [project.scripts]

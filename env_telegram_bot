@@ -1,0 +1,74 @@
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN="8457328244:AAGwlji0Kmo8Mv68foIQaifZ6J7a68YQ4lE"
+#WEBHOOK_URL=https://yourdomain.com/webhook
+MAX_CONCURRENT_JOBS=50
+
+# AI Service Configuration
+
+ADAPTA_COOKIES_STR="__client=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNsaWVudF8zMUo4ZkVNMjdMTUFDMXJsVzdPd0xudVVVT3AiLCJyb3RhdGluZ190b2tlbiI6InZicXVlM2ZtejFjbnh3OWRnYjM4dTQ1ZWJ1bDhpNXQycmRnNnZzaG0ifQ.nNCpzECBBiaf9fQ5cdiLQSEmXwWfAZ1gAnlKxIMwZBwliu60QEtznOwSJjpfd_l1UOeawC8JxLSr-5HoPkp8JQddcXX6aspxsKnh4Nw7ei0NWLZubSJy14ULgR9MjMmGobiorlQvDxVOu2-wfcvK-b5kCXOA5o45oA0ZcW3oNCfDtHsS6jcTa5fo1rLV2SAIPeYwbA8b8jZhpuWdMUo8nhR4hqJUIPaRtanmcblZXVsWm_k11kZubn9-n0UVpkKbifeWz5eD-m0g-0NyNNf8QcLLhpdKIEJWfutbvxal-PDzgPSQrgP-11fzDxkwKsihrl6KzSdUsVdSBtA-oLz6JA; __client_uat=1758343889"
+ADAPTA_MODEL=CLAUDE_4
+USE_ADAPTA_FOR_SUMMARIZATION=true
+#GEMINI_API_KEY=AIzaSyBFuXoQi3ECwIw139t0sQk8wUobL5CJH6Y
+GEMINI_API_KEY=AIzaSyCUymTklGT8WFoIdHaOS2PgwdA2iL_FV7E
+
+GEMINI_MODEL=gemini-2.5-flash
+#GEMINI_MODEL_NAME=gemini-2.5-flash
+
+GEMINI_TEMPERATURE=0.3
+#WHISPER_MODEL=medium
+#ENABLE_WHISPER_FALLBACK=true
+
+FULL_TRANSCRIPTION=false
+
+# Media Processing Configuration
+MAX_CONCURRENT_DOWNLOADS=50000
+AUTO_CLEANUP=true
+
+# Data Management Configuration
+MAX_BACKUP_FILES=10
+
+# Monitoring and Logging Configuration
+LOG_LEVEL=INFO
+LOG_FILE=true
+ENABLE_METRICS=true
+
+# Security Configuration (Optional)
+ALLOWED_USER_IDS=6809218853
+ADMIN_USER_IDS=6809218853
+ENABLE_USER_WHITELIST=true
+RATE_LIMIT_PER_USER=5000
+
+
+
+# Transcription Library Configuration
+# Uses pluggable transcription library with multiple providers and intelligent fallback
+# Available providers: distil-whisper-pt (PT-BR optimized), faster-whisper, gemini-hybrid
+PRIMARY_PROVIDER=distil-whisper-pt
+# Fallback providers in order (comma-separated)
+#FALLBACK_PROVIDERS=faster-whisper,gemini-hybrid
+# Minimum confidence to accept result (0.0-1.0)
+CONFIDENCE_THRESHOLD=0.7
+
+# Faster-Whisper Configuration
+# Model size: tiny, base, small, medium, large-v2, large-v3
+FASTER_WHISPER_MODEL_SIZE=medium
+# Force CPU usage even if GPU available
+#FASTER_WHISPER_FORCE_CPU=false
+
+# Distil-Whisper Configuration (PT-BR optimized)
+# Cache directory for downloaded models
+DISTIL_WHISPER_CACHE_DIR=./models/cache
+# Force CPU usage even if GPU available
+FORCE_CPU_FOR_DISTIL_WHISPER=false
+
+# Gemini Video Configuration
+# Maximum video file size in MB
+MAX_VIDEO_SIZE_MB=1000
+# Timeout for video processing in seconds
+GEMINI_VIDEO_TIMEOUT=300
+
+# FFmpeg Configuration (Optional - auto-detected)
+# Path to ffprobe binary (leave empty for auto-detection)
+FFPROBE_PATH=C:\ProgramData\chocolatey\bin\ffprobe.exe
+# Path to CUDA libraries (for GPU acceleration)
+CUDNN_PATH=C:\Program Files\NVIDIA\CUDNN\v9.10
