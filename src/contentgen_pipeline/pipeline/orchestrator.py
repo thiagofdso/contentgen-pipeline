@@ -209,28 +209,30 @@ class PipelineOrchestrator:
             raise
     
     def _find_video_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos de vídeo suportados em um diretório e subpastas."""
+        """Encontra todos os arquivos de v?deo em um diret?rio e subpastas, ordenados por nome."""
         supported_extensions = {".mp4", ".avi", ".mkv", ".webm", ".mov", ".m4v"}
-        files = []
-        for extension in supported_extensions:
-            files.extend(directory_path.rglob(f"*{extension}"))
-            files.extend(directory_path.rglob(f"*{extension.upper()}"))
-        files.sort(key=lambda x: x.name)
-        return files
-
+        unique_files: Dict[Path, Path] = {}
+        for candidate in directory_path.rglob("*"):
+            if candidate.suffix.lower() in supported_extensions:
+                unique_files.setdefault(candidate.resolve(), candidate)
+        return sorted(unique_files.values(), key=lambda path: path.name.lower())
     def _find_txt_files(self, directory_path: Path) -> List[Path]:
         """Encontra todos os arquivos .txt em um diretório e subpastas, ordenados por nome."""
-        files = list(directory_path.rglob("*.txt"))
-        files.extend(directory_path.rglob("*.TXT"))
-        files.sort(key=lambda x: x.name)
-        return files
+        unique_files: Dict[Path, Path] = {}
+        for candidate in directory_path.rglob('*.txt'):
+            unique_files.setdefault(candidate.resolve(), candidate)
+        for candidate in directory_path.rglob('*.TXT'):
+            unique_files.setdefault(candidate.resolve(), candidate)
+        return sorted(unique_files.values(), key=lambda path: path.name.lower())
 
     def _find_md_files(self, directory_path: Path) -> List[Path]:
         """Encontra todos os arquivos .md em um diretório e subpastas, ordenados por nome."""
-        files = list(directory_path.rglob("*.md"))
-        files.extend(directory_path.rglob("*.MD"))
-        files.sort(key=lambda x: x.name)
-        return files
+        unique_files: Dict[Path, Path] = {}
+        for candidate in directory_path.rglob('*.md'):
+            unique_files.setdefault(candidate.resolve(), candidate)
+        for candidate in directory_path.rglob('*.MD'):
+            unique_files.setdefault(candidate.resolve(), candidate)
+        return sorted(unique_files.values(), key=lambda path: path.name.lower())
 
     def _find_all_input_files(self, directory_path: Path) -> List[Tuple[Path, int]]:
         """Encontra todos os arquivos que podem ser processados, ordenados por prioridade.
@@ -439,12 +441,11 @@ class PipelineOrchestrator:
     def _find_mp3_files(self, directory_path: Path) -> List[Path]:
         """Encontra todos os arquivos de áudio em um diretório e subpastas, ordenados por nome."""
         audio_extensions = [".mp3", ".wav", ".m4a", ".opus"]
-        files = []
-        for ext in audio_extensions:
-            files.extend(directory_path.rglob(f"*{ext}"))
-            files.extend(directory_path.rglob(f"*{ext.upper()}"))
-        files.sort(key=lambda x: x.name)
-        return files
+        unique_files: Dict[Path, Path] = {}
+        for candidate in directory_path.rglob('*'):
+            if candidate.suffix.lower() in audio_extensions:
+                unique_files.setdefault(candidate.resolve(), candidate)
+        return sorted(unique_files.values(), key=lambda path: path.name.lower())
 
     def _find_text_and_md_files(self, directory_path: Path) -> List[Path]:
         """Encontra todos os arquivos .txt e .md em um diretório e subpastas, ordenados por nome."""
