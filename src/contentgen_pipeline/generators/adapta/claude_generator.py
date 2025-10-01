@@ -19,7 +19,7 @@ class ClaudeGenerator(BaseContentGenerator):
     utilizando o modelo Claude através da API Adapta.one.
     """
     
-    def __init__(self, prompts_dir: Optional[Path] = None, cookies_str: Optional[str] = None):
+    def __init__(self, prompts_dir: Optional[Path] = None, cookies_str: Optional[str] = None,session_id: Optional[str] = None):
         """Inicializa o gerador Claude.
         
         Args:
@@ -31,22 +31,25 @@ class ClaudeGenerator(BaseContentGenerator):
         # Usar cookies das configurações se não fornecidos
         if cookies_str is None:
             cookies_str = settings.adapta_cookies_str
-        
+
+        if session_id is None:
+            session_id = settings.adapta_session_id
+
         # Usar timeouts mais altos para lidar com chamadas que podem demorar
         self.client = AdaptaClient(
             cookies_str=cookies_str,
             timeout=600.0,  # 10 minutos para timeout geral
             connect_timeout=120.0,  # 2 minutos para conexão
-            read_timeout=600.0  # 10 minutos para leitura
+            read_timeout=600.0,  # 10 minutos para leitura
+            session_id=session_id
         )
-        self.model_name = "CLAUDE"
+        self.model_name = "CLAUDE_4"
         self._client_initialized = False
     
     async def _ensure_client_initialized(self):
         """Garante que o cliente está inicializado antes de usar."""
         if not self._client_initialized:
             await self.client._ensure_client()
-            await self.client._update_credentials()
             self._client_initialized = True
     
     async def summarize(self, text: str) -> str:
@@ -221,7 +224,7 @@ class ClaudeGenerator(BaseContentGenerator):
         Returns:
             Lista de nomes dos modelos suportados.
         """
-        return ["CLAUDE"]
+        return ["CLAUDE_4"]
     
     def get_provider_name(self) -> str:
         """Retorna o nome do provedor de IA.

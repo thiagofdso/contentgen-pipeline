@@ -1,43 +1,97 @@
-Você é um especialista em estruturação de conteúdo e análise de transcrições de vídeo. Sua tarefa é analisar cuidadosamente as transcrições e resumos fornecidos e criar uma estrutura hierárquica de tópicos. Siga estas etapas:
+<prompt_instructions>
 
-1. Analise atentamente as transcrições e resumos fornecidos. Preste atenção especial aos títulos de seções, parágrafos introdutórios e palavras-chave repetidas, pois estes geralmente indicam os temas principais.
-2. Identifique os temas principais, subtemas, pontos-chave e insights. Não use termos como módulo..., lição..., curso... nos tópicos, subtemas, pontos-chave ou insights.
-3. Crie uma estrutura hierárquica de tópicos, organizando o conteúdo de forma lógica. Utilize indentação para representar a hierarquia, onde tópicos principais têm menos indentação e subtemas têm mais.
-4. Para cada tópico principal, liste 3-5 pontos-chave que resumam seu conteúdo. Estes pontos-chave devem ser concisos e informativos, capturando a essência do tópico.
-5. Gere o conteúdo em português brasileiro.
+<role_and_goal>
+You are an expert in content structuring and video transcript analysis. Your goal is to meticulously analyze the provided transcripts and summaries in the `{texts}` variable and create a clear, logical, and hierarchical topic structure based on the content.
+</role_and_goal>
 
-Use o seguinte formato para sua resposta:
+<input_data>
+The source content to be analyzed will be provided in the `{texts}` variable. This may include one or more video transcripts, summaries, or related documents.
+</input_data>
 
-[TÓPICO PRINCIPAL 1]
-- Ponto-chave 1
-- Ponto-chave 2
-- Ponto-chave 3
+<process_steps>
+1.  **Initial Analysis:** Carefully scan the content in `{texts}`. Pay close attention to structural cues like section titles, introductory paragraphs, repeated keywords, and concluding summaries to identify the main themes.
+2.  **Theme Identification:** Identify the main topics, subtopics, key points, and insights.
+3.  **Hierarchical Structuring:** Organize the identified content into a logical hierarchy. Use indentation to represent the parent-child relationships. Prioritize themes that are introduced early, repeated often, and summarized at the end as main topics.
+4.  **Key Point Extraction:** For each main topic and subtopic, list 3-5 concise and informative key points that capture the essence of that section.
+5.  **Example Integration:** If the content includes specific examples, case studies, or anecdotes, integrate them as a dedicated key point under the relevant topic, clearly indicating their purpose (e.g., "Example: The case of Company X illustrates this principle.").
+6.  **Summary Generation:** For each main topic, add a brief 1-2 sentence summary to provide a high-level overview.
+</process_steps>
 
-  [SUBTÓPICO 1.1]
-  - Ponto-chave 1
-  - Ponto-chave 2
-  - Ponto-chave 3
+<output_format>
+Your response must strictly follow this format. Use indentation (two spaces) to represent the hierarchy.
 
-  [SUBTÓPICO 1.2]
-  - Ponto-chave 1
-  - Ponto-chave 2
-  - Ponto-chave 3
+[MAIN TOPIC 1]
+*Brief 1-2 sentence summary of the main topic.*
+- Key point 1
+- Key point 2
+- Key point 3
 
-[TÓPICO PRINCIPAL 2]
-- Ponto-chave 1
-- Ponto-chave 2
-- Ponto-chave 3
+  [SUBTOPIC 1.1]
+  - Key point 1
+  - Key point 2
+  - Key point 3
 
-  [SUBTÓPICO 2.1]
-  - Ponto-chave 1
-  - Ponto-chave 2
-  - Ponto-chave 3
+  [SUBTOPIC 1.2]
+  - Key point 1
+  - Key point 2
+  - Key point 3
 
-Instruções adicionais:
-- Mantenha a hierarquia e estrutura do conteúdo clara e lógica. Evite criar níveis de hierarquia excessivamente profundos (mais de 3-4 níveis), pois isso pode dificultar a compreensão.
-- Inclua informações detalhadas, mantendo a estrutura consistente em todo o documento. Use frases completas e gramaticalmente corretas para garantir a clareza.
-- Certifique-se de capturar todos os pontos importantes das transcrições e resumos. Não deixe de fora informações cruciais que possam ser relevantes para o usuário final.
-- Se o conteúdo incluir exemplos ou estudos de caso, certifique-se de incluí-los na estrutura, indicando sua relevância para os tópicos relacionados.
-- Considere a possibilidade de adicionar um breve resumo (1-2 frases) para cada tópico principal, fornecendo uma visão geral do seu conteúdo.
+[MAIN TOPIC 2]
+*Brief 1-2 sentence summary of the main topic.*
+- Key point 1
+- Key point 2
+- Key point 3
+</output_format>
 
+<constraints_and_rules>
+- **Language:** The final output **must** be written entirely in Brazilian Portuguese (pt-BR).
+- **Forbidden Terms:** Absolutely do not use corporate or educational jargon like "module", "lesson", "course", "unit", "chapter", etc., in any part of the structure (topics, subtopics, key points).
+- **Hierarchy Depth:** Do not create a hierarchy deeper than 4 levels. Keep the structure clear and easy to navigate.
+- **Content Integrity:** Do not invent or infer information that is not explicitly present in the source `{texts}`. Your output must be a faithful representation of the provided content.
+- **Completeness:** Ensure all crucial information from the source is captured in the structure.
+- **Grammar:** Use complete, grammatically correct sentences for all summaries and key points.
+- **Edge Case - Insufficient Points:** If a topic genuinely contains fewer than 3 key points in the source text, list what is available but do not create filler points.
+- **Edge Case - Ambiguous Input:** If the content in `{texts}` is too sparse, ambiguous, or self-contradictory to form a logical structure, do not generate a flawed output. Instead, state the problem clearly (e.g., "The provided text is ambiguous and does not contain a clear thematic structure.") and ask for a better input.
+</constraints_and_rules>
+
+<example>
+This is a concrete example of how to apply the rules.
+
+<source_text>
+"Welcome! Today we're diving into effective communication. First, we'll cover active listening, which is about truly hearing what others say. A key part of this is not interrupting. We'll also see how non-verbal cues, like body language, can be more powerful than words. For instance, a study showed that crossed arms can signal defensiveness, even if the person is saying agreeable things. Finally, we'll touch on clarity. Being clear means avoiding jargon and structuring your message logically. To summarize, communication is a mix of listening, observing body language, and speaking clearly."
+</source_text>
+
+<expected_output>
+[COMUNICAÇÃO EFICAZ]
+*Este tópico aborda os pilares fundamentais da comunicação, incluindo escuta ativa, a importância da linguagem corporal e a necessidade de clareza na mensagem.*
+- A comunicação eficaz é composta por três componentes principais: escuta, observação e clareza.
+- O objetivo é garantir que a mensagem seja transmitida e recebida com precisão.
+- Dominar essas habilidades melhora os relacionamentos profissionais e pessoais.
+
+  [ESCUTA ATIVA]
+  - Consiste em ouvir genuinamente o que a outra pessoa está dizendo, em vez de apenas esperar a sua vez de falar.
+  - Uma prática fundamental da escuta ativa é evitar interrupções.
+  - Demonstra respeito e incentiva o interlocutor a se abrir.
+
+  [SINAIS NÃO VERBAIS]
+  - A linguagem corporal e outras dicas não verbais podem ter um impacto maior do que as palavras.
+  - É crucial estar ciente tanto dos seus próprios sinais não verbais quanto dos sinais dos outros.
+  - Exemplo: Um estudo demonstrou que braços cruzados podem ser interpretados como uma postura defensiva.
+
+  [CLAREZA NA MENSAGEM]
+  - A clareza envolve o uso de linguagem simples e a prevenção de jargões técnicos.
+  - Estruturar a mensagem de forma lógica ajuda na compreensão do ouvinte.
+  - A falta de clareza é uma das principais causas de mal-entendidos.
+</expected_output>
+
+</example>
+
+<final_instruction>
+Now, analyze the content provided and generate the hierarchical structure. Remember, the entire output must be in Brazilian Portuguese (pt-BR).
+</final_instruction>
+
+<content>
 {texts}
+</content>
+
+</prompt_instructions>

@@ -203,6 +203,7 @@ class VideoDownloader:
             'yt-dlp',
             '--ignore-errors',
             '--no-playlist',
+            '--restrict-filenames',  # Adicionado para sanitizar nomes de arquivos
         ]
         
         if not overwrite:

@@ -89,21 +89,28 @@ class PipelineOrchestrator:
             srt_path = output_dir / f"{base_name}.srt"
             md_path = output_dir / f"{base_name}.md"
 
+            # Função auxiliar para determinar o caminho do áudio
+            def get_audio_path(media_path: Path) -> Path:
+                audio_extensions = [".mp3", ".wav", ".m4a", ".opus"]
+                if media_path.suffix.lower() in audio_extensions:
+                    return media_path
+                return media_path.with_suffix('.mp3')
+
             # 1. Extração de áudio (só se não existir transcrição)
             if extract_audio:
                 # Verificar se já existe transcrição (.txt ou .srt)
-                if txt_path.exists() or srt_path.exists():
+                if txt_path.exists() and srt_path.exists():
                     logger.info(f"Transcrição já existe para {media_path.name} (.txt ou .srt encontrado), pulando extração de áudio.")
-                    audio_path = media_path.with_suffix('.mp3')
+                    audio_path = get_audio_path(media_path)
                 else:
-                    audio_path = media_path.with_suffix('.mp3')
+                    audio_path = get_audio_path(media_path)
                     if not audio_path.exists():
                         logger.info("Extraindo áudio do arquivo de mídia...")
                         audio_path = await self._extract_audio(media_path)
                     else:
                         logger.info(f"Áudio já existe: {audio_path}")
             else:
-                audio_path = media_path.with_suffix('.mp3')
+                audio_path = get_audio_path(media_path)
 
             # 2. Transcrição
             if transcribe:
@@ -202,28 +209,30 @@ class PipelineOrchestrator:
             raise
     
     def _find_video_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos de vídeo suportados em um diretório e subpastas."""
+        """Encontra todos os arquivos de v?deo em um diret?rio e subpastas, ordenados por nome."""
         supported_extensions = {".mp4", ".avi", ".mkv", ".webm", ".mov", ".m4v"}
-        files = []
-        for extension in supported_extensions:
-            files.extend(directory_path.rglob(f"*{extension}"))
-            files.extend(directory_path.rglob(f"*{extension.upper()}"))
-        files.sort(key=lambda x: x.name)
-        return files
-
+        unique_files: Dict[Path, Path] = {}
+        for candidate in directory_path.rglob("*"):
+            if candidate.suffix.lower() in supported_extensions:
+                unique_files.setdefault(candidate.resolve(), candidate)
+        return sorted(unique_files.values(), key=lambda path: path.name.lower())
     def _find_txt_files(self, directory_path: Path) -> List[Path]:
         """Encontra todos os arquivos .txt em um diretório e subpastas, ordenados por nome."""
-        files = list(directory_path.rglob("*.txt"))
-        files.extend(directory_path.rglob("*.TXT"))
-        files.sort(key=lambda x: x.name)
-        return files
+        unique_files: Dict[Path, Path] = {}
+        for candidate in directory_path.rglob('*.txt'):
+            unique_files.setdefault(candidate.resolve(), candidate)
+        for candidate in directory_path.rglob('*.TXT'):
+            unique_files.setdefault(candidate.resolve(), candidate)
+        return sorted(unique_files.values(), key=lambda path: path.name.lower())
 
     def _find_md_files(self, directory_path: Path) -> List[Path]:
         """Encontra todos os arquivos .md em um diretório e subpastas, ordenados por nome."""
-        files = list(directory_path.rglob("*.md"))
-        files.extend(directory_path.rglob("*.MD"))
-        files.sort(key=lambda x: x.name)
-        return files
+        unique_files: Dict[Path, Path] = {}
+        for candidate in directory_path.rglob('*.md'):
+            unique_files.setdefault(candidate.resolve(), candidate)
+        for candidate in directory_path.rglob('*.MD'):
+            unique_files.setdefault(candidate.resolve(), candidate)
+        return sorted(unique_files.values(), key=lambda path: path.name.lower())
 
     def _find_all_input_files(self, directory_path: Path) -> List[Tuple[Path, int]]:
         """Encontra todos os arquivos que podem ser processados, ordenados por prioridade.
@@ -396,14 +405,20 @@ class PipelineOrchestrator:
         
         # Salvar transcrição em texto
         txt_path = output_dir / f"{base_name}.txt"
-        txt_path.write_text(transcript_result["text"], encoding="utf-8")
-        logger.debug(f"Transcrição salva: {txt_path}")
+        if not txt_path.exists():
+            txt_path.write_text(transcript_result["text"], encoding="utf-8")
+            logger.debug(f"Transcrição salva: {txt_path}")
+        else:
+            logger.info(f"Arquivo de transcrição já existe, pulando: {txt_path}")
         
         # Salvar legendas SRT
         srt_path = output_dir / f"{base_name}.srt"
-        srt_content = self._generate_srt_content(transcript_result["segments"])
-        srt_path.write_text(srt_content, encoding="utf-8")
-        logger.debug(f"Legendas salvas: {srt_path}")
+        if not srt_path.exists():
+            srt_content = self._generate_srt_content(transcript_result["segments"])
+            srt_path.write_text(srt_content, encoding="utf-8")
+            logger.debug(f"Legendas salvas: {srt_path}")
+        else:
+            logger.info(f"Arquivo de legendas já existe, pulando: {srt_path}")
         
         return {
             "transcript": str(txt_path),
@@ -424,11 +439,13 @@ class PipelineOrchestrator:
             logger.warning(f"Erro ao remover arquivo de áudio {audio_path}: {str(e)}")
     
     def _find_mp3_files(self, directory_path: Path) -> List[Path]:
-        """Encontra todos os arquivos .mp3 em um diretório e subpastas, ordenados por nome."""
-        files = list(directory_path.rglob("*.mp3"))
-        files.extend(directory_path.rglob("*.MP3"))
-        files.sort(key=lambda x: x.name)
-        return files
+        """Encontra todos os arquivos de áudio em um diretório e subpastas, ordenados por nome."""
+        audio_extensions = [".mp3", ".wav", ".m4a", ".opus"]
+        unique_files: Dict[Path, Path] = {}
+        for candidate in directory_path.rglob('*'):
+            if candidate.suffix.lower() in audio_extensions:
+                unique_files.setdefault(candidate.resolve(), candidate)
+        return sorted(unique_files.values(), key=lambda path: path.name.lower())
 
     def _find_text_and_md_files(self, directory_path: Path) -> List[Path]:
         """Encontra todos os arquivos .txt e .md em um diretório e subpastas, ordenados por nome."""
