@@ -34,7 +34,8 @@ class AdaptaClient:
         user_id: Optional[str] = None,
         timeout: Optional[float] = None,
         connect_timeout: Optional[float] = None,
-        read_timeout: Optional[float] = None
+        read_timeout: Optional[float] = None,
+        session_id: Optional[str] = None, 
     ):
         """Inicializa o cliente Adapta.
         
@@ -58,10 +59,15 @@ class AdaptaClient:
         
         # Parse dos cookies se fornecidos
         if cookies_str:
-            self.cookies = self._parse_cookies(cookies_str)
+            sanitized_cookies = cookies_str.strip().strip("'\"")
+            self.cookies = self._parse_cookies(sanitized_cookies)
         else:
             self.cookies = {}
-        
+
+        if session_id:
+            self.session_id = session_id.strip().strip("'\"")
+            #logger.info(f"Usando session_id fornecida: {self.session_id}")
+
         # Headers padrão
         self.headers = self._default_headers()
     
@@ -73,15 +79,15 @@ class AdaptaClient:
         """
         return {
             "accept": "*/*",
-            "accept-language": "pt-BR,pt;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+            "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
             "content-encoding": "br",
-            "dnt": "1",
+            "priority": "u=1, i",
             "origin": "https://app.adapta.one",
             "referer": "https://app.adapta.one/",
-            "sec-ch-ua": '"Chromium";v="130", "Microsoft Edge";v="130", "Not?A_Brand";v="99"',
+            "sec-ch-ua": '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
             "sec-fetch-site": "same-site"
@@ -89,105 +95,118 @@ class AdaptaClient:
     
     def _parse_cookies(self, cookies_str: str) -> Dict[str, str]:
         """Converte uma string de cookies em um dicionário.
-        
+
         Args:
             cookies_str: String de cookies.
-            
+
         Returns:
             Dicionário de cookies.
-            
+
         Raises:
             ValueError: Se a string de cookies for inválida.
         """
-        try:
-            return dict(pair.split("=", 1) for pair in cookies_str.split("; "))
-        except ValueError as e:
-            logger.error(f"Erro ao parsear cookies: {e}")
-            raise ValueError(f"String de cookies inválida: {cookies_str}")
-    
+        cookies: Dict[str, str] = {}
+        for raw_pair in cookies_str.split(';'):
+            pair = raw_pair.strip()
+            if not pair:
+                continue
+            if '=' not in pair:
+                logger.warning(f"Entrada de cookie inválida ignorada: {pair}")
+                continue
+            key, value = pair.split('=', 1)
+            key = key.strip().strip("'\"")
+            value = value.strip().strip("'\"")
+            if key:
+                cookies[key] = value
+        if not cookies:
+            raise ValueError(f"String de cookies invalida: {cookies_str}")
+        return cookies
+
     async def __aenter__(self):
         """Context manager entry."""
         await self._ensure_client()
+        await self._update_session()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         if self.client:
             await self.client.aclose()
-    
+
     async def _ensure_client(self) -> None:
         """Garante que o cliente HTTP está inicializado."""
         if self.client is None:
-            # Configurar timeout baseado nos parâmetros fornecidos
             if self.timeout is None and self.connect_timeout is None and self.read_timeout is None:
-                # Sem timeout (None)
                 timeout_config = None
             else:
-                # Usar valores fornecidos ou padrões
                 timeout_config = httpx.Timeout(
-                    timeout=self.timeout or 300.0,  # 5 minutos padrão
-                    connect=self.connect_timeout or 60.0,  # 1 minuto para conexão
-                    read=self.read_timeout or 300.0  # 5 minutos para leitura
+                    timeout=self.timeout or 300.0,
+                    connect=self.connect_timeout or 60.0,
+                    read=self.read_timeout or 300.0,
                 )
-            
+
             self.client = httpx.AsyncClient(
                 timeout=timeout_config,
-                follow_redirects=True
+                follow_redirects=True,
             )
-            await self._update_credentials()
-    
+
+            if not self.session_id:
+                await self._update_credentials()
+
     async def _update_credentials(self) -> None:
         """Atualiza as credenciais do cliente, incluindo o session_id."""
         if not self.client:
             logger.error("Cliente HTTP não inicializado")
             raise ValueError("Cookies não estão disponíveis")
-        
+
         try:
-            # Verificar se temos cookies válidos
             if not self.cookies:
                 logger.error("Nenhum cookie disponível para atualizar credenciais")
                 raise ValueError("Cookies não estão disponíveis")
-            
+
             logger.debug(f"Cookies disponíveis: {list(self.cookies.keys())}")
-            
-            # Busca informações do cliente
+
             client_url = f"{self.clerk_base_url}/client?__clerk_api_version=2024-10-01&_clerk_js_version=5.55.1"
             logger.debug(f"Fazendo requisição para: {client_url}")
-            
+
             response = await self.client.get(
                 client_url,
                 headers=self.headers,
-                cookies=self.cookies
+                cookies=self.cookies,
             )
             logger.debug(f"Resposta da API: Status {response.status_code}")
-            
+
             response.raise_for_status()
-            
+
             client_data = response.json()
-            logger.debug(f"Estrutura da resposta: {list(client_data.keys()) if isinstance(client_data, dict) else 'Não é dict'}")
-            
+            logger.debug(
+                f"Estrutura da resposta: {list(client_data.keys()) if isinstance(client_data, dict) else 'Não é dict'}"
+            )
+
             if "response" not in client_data:
                 logger.error(f"Campo 'response' não encontrado na resposta: {client_data}")
                 raise KeyError("Campo 'response' não encontrado na resposta da API")
-            
+
             response_data = client_data["response"]
-            logger.debug(f"Estrutura do response: {list(response_data.keys()) if isinstance(response_data, dict) else 'Não é dict'}")
-            
+            logger.debug(
+                f"Estrutura do response: {list(response_data.keys()) if isinstance(response_data, dict) else 'Não é dict'}"
+            )
+
             if "last_active_session_id" not in response_data:
                 logger.error(f"Campo 'last_active_session_id' não encontrado: {response_data}")
                 raise KeyError("Campo 'last_active_session_id' não encontrado na resposta")
-            
+
             self.session_id = response_data["last_active_session_id"]
-            
+
             if not self.session_id:
                 logger.error("Session ID obtido está vazio")
                 raise ValueError("Session ID está vazio")
-            
+
             logger.debug(f"Credenciais atualizadas. Session ID: {self.session_id}")
-            
+
         except httpx.HTTPError as e:
             logger.error(f"Erro HTTP ao atualizar credenciais: {e}")
-            if isinstance(e, httpx.HTTPStatusError) and e.response:
+            if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
                 logger.error(f"Status code: {e.response.status_code}")
                 logger.error(f"Resposta: {e.response.text[:500]}")
             raise
@@ -201,39 +220,43 @@ class AdaptaClient:
             logger.error(f"Erro inesperado ao atualizar credenciais: {e}")
             logger.error(f"Tipo do erro: {type(e).__name__}")
             raise
-    
+
     async def _update_session(self) -> None:
         """Atualiza o cookie __session com o token JWT atualizado."""
         if not self.client or not self.session_id:
             logger.error("Cliente ou session_id não inicializado")
             raise RuntimeError("Cliente ou session_id não inicializado")
-        
+
         try:
-            touch_url = f"{self.clerk_base_url}/client/sessions/{self.session_id}/touch?__clerk_api_version=2021-02-05&_clerk_js_version=5.41.1"
+            touch_url = (
+                f"{self.clerk_base_url}/client/sessions/{self.session_id}/touch?"
+                "__clerk_api_version=2025-04-10&_clerk_js_version=5.97.0"
+            )
             touch_headers = self.headers.copy()
-            touch_headers['content-type'] = 'application/x-www-form-urlencoded'
-            
-            # Usar formato string como no original
+            touch_headers["content-type"] = "application/x-www-form-urlencoded"
+
+            #logger.debug(f"HEADERS: {touch_headers}")
+            #logger.debugf"Cookies: {self.cookies}")
+
             response = await self.client.post(
                 touch_url,
                 headers=touch_headers,
                 cookies=self.cookies,
-                content="active_organization_id="
+                content="active_organization_id=",
             )
             response.raise_for_status()
-            
+
             session_data = response.json()
-            session_jwt = session_data['client']['sessions'][0]['last_active_token']['jwt']
-            
-            # Validar se o token não está vazio
+            session_jwt = session_data["client"]["sessions"][0]["last_active_token"]["jwt"]
+
             if not session_jwt:
-                raise ValueError("Token JWT obtido está vazio")
-            
+                raise ValueError("Token JWT obtido esta vazio")
+
             self.cookies["__session"] = session_jwt
             self.cookies["__session_xcsZUTdN"] = session_jwt
-            
+
             logger.debug(f"Sessão atualizada com sucesso. Token: {session_jwt[:20]}...")
-            
+
         except httpx.HTTPError as e:
             logger.error(f"Erro ao atualizar sessão: {e}")
             raise
@@ -243,7 +266,8 @@ class AdaptaClient:
         except ValueError as e:
             logger.error(f"Token inválido: {e}")
             raise
-    
+
+
     def _generate_random_id(self) -> str:
         """Gera um ID aleatório no formato UUID4.
         
@@ -694,7 +718,8 @@ class AdaptaClient:
         """
         try:
             await self._ensure_client()
-            await self._update_credentials()
+            if not self.session_id:
+                await self._update_credentials()
             return True
         except Exception as e:
             logger.error(f"Health check falhou: {e}")

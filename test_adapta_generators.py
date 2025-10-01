@@ -229,6 +229,6 @@ async def test_generator_interface():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_adapta_client())
-    asyncio.run(test_generator_interface())
+    #asyncio.run(test_adapta_client())
+    #asyncio.run(test_generator_interface())
     asyncio.run(test_adapta_generators()) 
