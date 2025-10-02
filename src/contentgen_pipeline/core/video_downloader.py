@@ -33,6 +33,17 @@ class VideoDownloader:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Diretório de saída criado: {self.output_dir}")
     
+    def _identify_platform(self, url: str) -> str:
+        """Retorna a plataforma com base na URL."""
+        url_lower = url.lower()
+        if 'facebook.com' in url_lower or 'fb.watch' in url_lower or 'fb.com' in url_lower:
+            return 'facebook'
+        if 'instagram.com' in url_lower or 'instagr.am' in url_lower:
+            return 'instagram'
+        if 'youtube.com' in url_lower or 'youtu.be' in url_lower:
+            return 'youtube'
+        return 'generic'
+
     async def download_from_csv(
         self,
         csv_path: Path,
@@ -199,6 +210,13 @@ class VideoDownloader:
         Returns:
             Dicionário com resultado do download.
         """
+        platform = self._identify_platform(url)
+        cookies_args = []
+        if platform == 'facebook' and settings.facebook_cookies_path:
+            cookies_args = ['--cookies', str(settings.facebook_cookies_path)]
+        elif platform == 'instagram' and settings.instagram_cookies_path:
+            cookies_args = ['--cookies', str(settings.instagram_cookies_path)]
+
         command = [
             'yt-dlp',
             '--ignore-errors',
@@ -206,6 +224,9 @@ class VideoDownloader:
             '--restrict-filenames',  # Adicionado para sanitizar nomes de arquivos
         ]
         
+        if cookies_args:
+            command.extend(cookies_args)
+
         if not overwrite:
             command.append('--no-overwrites')
         

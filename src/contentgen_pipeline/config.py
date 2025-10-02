@@ -42,6 +42,16 @@ class Settings(BaseSettings):
         description="Diretorio padrao de videos (usado quando nao especificado na CLI)",
     )
 
+    # Configuracoes de cookies para redes sociais
+    facebook_cookies_path: Optional[Path] = Field(
+        default=None,
+        description="Caminho para o arquivo de cookies do Facebook (FACEBOOK_COOKIES_PATH)",
+    )
+    instagram_cookies_path: Optional[Path] = Field(
+        default=None,
+        description="Caminho para o arquivo de cookies do Instagram (INSTAGRAM_COOKIES_PATH)",
+    )
+
     # Geradores especificos (lidos de variaveis de ambiente em caixa alta)
     summarize_generator: Optional[str] = Field(
         default=None,
