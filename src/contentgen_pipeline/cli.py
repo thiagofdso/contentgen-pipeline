@@ -148,7 +148,8 @@ def process(
             console.print("[red]Erro: utilize apenas --download ou --download-batch por execucao[/red]")
             raise typer.Exit(1)
 
-        base_path = path
+        original_path = Path(path) if path is not None else None
+        base_path = original_path
         if base_path is None:
             if settings.video_folder:
                 base_path = Path(settings.video_folder)
